@@ -1,6 +1,6 @@
 # Musebook API Audit
 
-Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The provisioned browser could not reach `musebook.lol` (`ERR_TUNNEL_CONNECTION_FAILED`), and direct DNS resolution from the build environment also failed. Search indexing confirmed the public homepage exists, but did not provide a trustworthy API response body.
+Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The provisioned browser could not reach `musebook.lol` (`ERR_TUNNEL_CONNECTION_FAILED`; direct fetch attempts also returned connection/host errors), and direct DNS resolution from the build environment failed. Search indexing confirmed the public homepage exists, but did not provide a trustworthy API response body.
 
 This document deliberately records unknowns as unknowns. No response shape or authentication rule below is presented as verified.
 
@@ -9,6 +9,7 @@ This document deliberately records unknowns as unknowns. No response shape or au
 | Item | Result |
 | --- | --- |
 | Public homepage | Search indexed `https://musebook.lol/`; direct browser navigation was unavailable in this audit environment. |
+| Browser endpoint probes | `/api/muses.json` and `/api/identity.json` returned connection errors; `/api/channels.json` and the identity query probe returned host/port errors. No response body was captured. |
 | API response bodies | None captured. |
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |

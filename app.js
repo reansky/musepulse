@@ -17,6 +17,7 @@ const state = {
   activity: [],
   lastSync: null,
   status: "syncing",
+  endpointStatus: { muses: "syncing", channels: "syncing", identity: "syncing" },
   errors: [],
   query: "",
   profileId: null
@@ -50,6 +51,23 @@ function asList(payload, keys = []) {
   return [];
 }
 
+function relationIds(item, keys) {
+  const ids = [];
+  for (const key of keys) {
+    const value = item?.[key];
+    const values = Array.isArray(value) ? value : value == null ? [] : [value];
+    for (const entry of values) {
+      if (entry && typeof entry === "object") {
+        const id = firstValue(entry.id, entry.muse_id, entry.museId, entry.channel_id, entry.channelId, entry.slug, entry.name);
+        if (id) ids.push(String(id));
+      } else if (entry !== undefined && entry !== null && String(entry).trim()) {
+        ids.push(String(entry));
+      }
+    }
+  }
+  return [...new Set(ids)];
+}
+
 function normalizeMuse(item) {
   if (!item || typeof item !== "object") return null;
   const id = firstValue(item.id, item.muse_id, item.museId, item.uuid, item.handle);
@@ -63,6 +81,7 @@ function normalizeMuse(item) {
     status: firstValue(item.status, item.state, "") || "",
     createdAt: firstValue(item.created_at, item.createdAt, item.joined_at, "") || "",
     url: firstValue(item.url, item.href, item.link, "") || "",
+    relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "related_muses", "relatedMuseIds", "channel_ids", "channelIds", "channels"]),
     raw: item
   };
 }
@@ -78,6 +97,7 @@ function normalizeChannel(item) {
     description: String(firstValue(item.description, item.about, item.topic, "") || ""),
     url: firstValue(item.url, item.href, item.link, "") || "",
     activityCount: firstValue(item.activity_count, item.activityCount, item.posts_count, "") || "",
+    relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "muse_ids", "museIds", "member_ids", "memberIds", "members"]),
     raw: item
   };
 }
@@ -190,19 +210,21 @@ function emptyState(index, title, copy, action = true) {
 
 function setSyncUi() {
   const isReady = state.status === "ready";
+  const isPartial = state.status === "partial";
   const isError = state.status === "error";
-  const statusText = isReady ? "READY" : isError ? "UNAVAILABLE" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available` : isError ? "public surface unavailable" : "checking endpoints";
+  const connected = Object.values(state.endpointStatus).filter((status) => status === "ready").length;
+  const statusText = isReady ? "READY" : isPartial ? "PARTIALLY CONNECTED" : isError ? "UNAVAILABLE" : "SYNCING";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
-  $("#hero-sync-copy").textContent = isReady ? `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
+  $("#hero-sync-copy").textContent = isReady ? `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
   $("#hero-node-count").textContent = state.muses.length + state.channels.length || "--";
   $("#sync-badge").textContent = statusText;
-  $("#sync-badge").className = `data-badge${isReady ? " ready" : isError ? " error" : ""}`;
+  $("#sync-badge").className = `data-badge${isReady ? " ready" : isPartial ? " partial" : isError ? " error" : ""}`;
   $("#sync-time").textContent = formatSyncTime(state.lastSync);
-  $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady ? "" : "status-dot-muted"}`;
+  $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady ? "" : isPartial ? "status-dot-partial" : "status-dot-muted"}`;
 }
 
 function renderPulse() {
@@ -264,7 +286,17 @@ function renderChannels() {
 function renderRadar() {
   const graph = $("#network-graph");
   const nodes = [...state.muses.slice(0, 8).map((muse) => ({ ...muse, kind: "muse" })), ...state.channels.slice(0, 5).map((channel) => ({ ...channel, kind: "channel" }))];
-  if (nodes.length < 2) {
+  const byKey = new Map(nodes.flatMap((node) => [[String(node.id), node], [String(node.name).toLowerCase(), node]]));
+  const links = [];
+  for (const node of nodes) {
+    for (const relationId of node.relationIds || []) {
+      const target = byKey.get(String(relationId)) || byKey.get(String(relationId).toLowerCase());
+      if (!target || target === node) continue;
+      const key = [String(node.id), String(target.id)].sort().join("::");
+      if (!links.some((link) => link.key === key)) links.push({ key, source: node, target });
+    }
+  }
+  if (nodes.length < 2 || !links.length) {
     graph.innerHTML = "";
     $("#radar-empty").classList.remove("hidden");
     $("#radar-count").textContent = "0 observable links";
@@ -279,14 +311,12 @@ function renderRadar() {
     const radius = node.kind === "muse" ? 130 : 95;
     return { ...node, x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
   });
-  const links = [];
-  for (let index = 1; index < points.length; index += 1) {
-    const current = points[index];
-    const prior = points[index - 1];
-    const sameChannel = current.kind === "channel" || prior.kind === "channel";
-    if (sameChannel) links.push(`<line class="graph-link" x1="${prior.x}" y1="${prior.y}" x2="${current.x}" y2="${current.y}"/>`);
-  }
-  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records">${links.join("")}<circle cx="${center.x}" cy="${center.y}" r="34" fill="rgba(107,231,230,.07)" stroke="rgba(107,231,230,.4)"/><text x="${center.x}" y="${center.y + 4}" fill="#6be7e6" font-family="DM Mono" font-size="10" text-anchor="middle">MUSEBOOK</text>${points.map((point) => `<g class="graph-node ${point.kind}"><circle cx="${point.x}" cy="${point.y}" r="${point.kind === "muse" ? 17 : 14}"/><text x="${point.x}" y="${point.y + 34}">${escapeHtml(point.name.slice(0, 16))}</text></g>`).join("")}</svg>`;
+  const lines = links.map((link) => {
+    const source = points.find((point) => point.id === link.source.id);
+    const target = points.find((point) => point.id === link.target.id);
+    return source && target ? `<line class="graph-link" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"/>` : "";
+  }).join("");
+  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records">${lines}<circle cx="${center.x}" cy="${center.y}" r="34" fill="rgba(107,231,230,.07)" stroke="rgba(107,231,230,.4)"/><text x="${center.x}" y="${center.y + 4}" fill="#6be7e6" font-family="DM Mono" font-size="10" text-anchor="middle">MUSEBOOK</text>${points.map((point) => `<g class="graph-node ${point.kind}"><circle cx="${point.x}" cy="${point.y}" r="${point.kind === "muse" ? 17 : 14}"/><text x="${point.x}" y="${point.y + 34}">${escapeHtml(point.name.slice(0, 16))}</text></g>`).join("")}</svg>`;
   $("#radar-count").textContent = `${links.length} observable link${links.length === 1 ? "" : "s"}`;
 }
 
@@ -331,6 +361,7 @@ function extractMuseActivity(rawItems) {
 async function loadData() {
   state.status = "syncing";
   state.errors = [];
+  state.endpointStatus = Object.fromEntries(CONFIG.ENDPOINTS.map((endpoint) => [endpoint.type, "syncing"]));
   renderAll();
   if (CONFIG.USE_MOCK_DATA) {
     state.status = "error";
@@ -343,10 +374,12 @@ async function loadData() {
   const rawChannels = [];
   const rawActivity = [];
   let successfulEndpoints = 0;
-  for (const result of settled) {
+  settled.forEach((result, index) => {
+    const endpoint = CONFIG.ENDPOINTS[index];
     if (result.status === "fulfilled") {
       successfulEndpoints += 1;
       const { type, value } = result.value;
+      state.endpointStatus[type] = "ready";
       if (type === "muses" || type === "identity") {
         const items = recordsFrom(value, ["muses", "identities", "agents", "profiles", "items"]);
         rawMuses.push(...items);
@@ -358,14 +391,15 @@ async function loadData() {
         rawActivity.push(...unwrapActivity(value));
       }
     } else {
+      if (endpoint) state.endpointStatus[endpoint.type] = "error";
       state.errors.push(result.reason?.message || "Endpoint unavailable");
     }
-  }
+  });
   state.muses = [...new Map(rawMuses.map(normalizeMuse).filter(Boolean).map((muse) => [muse.id, muse])).values()];
   state.channels = [...new Map(rawChannels.map(normalizeChannel).filter(Boolean).map((channel) => [channel.id, channel])).values()];
   state.activity = [...new Map(rawActivity.map(normalizeActivity).filter(Boolean).map((event) => [event.id, event])).values()];
   state.lastSync = successfulEndpoints ? new Date() : null;
-  state.status = successfulEndpoints ? "ready" : "error";
+  state.status = successfulEndpoints === CONFIG.ENDPOINTS.length ? "ready" : successfulEndpoints ? "partial" : "error";
   renderAll();
 }
 
