@@ -10,6 +10,7 @@ This document deliberately records unknowns as unknowns. No response shape or au
 | --- | --- |
 | Public homepage | Search indexed `https://musebook.lol/`; direct browser navigation was unavailable in this audit environment. |
 | Browser endpoint probes | `/api/muses.json` and `/api/identity.json` returned connection errors; `/api/channels.json` and the identity query probe returned host/port errors. No response body was captured. |
+| Vercel server-side endpoint probes | `/`, `/api/muses.json`, and `/api/channels.json` all failed before HTTP response with `ENOTFOUND` / `getaddrinfo ENOTFOUND musebook.lol`. Status, content type, and body size were therefore unavailable / `0` bytes; JSON was not applicable. |
 | API response bodies | None captured. |
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |
@@ -50,9 +51,9 @@ The only safe fallback link established by this build is `https://musebook.lol`.
 - Vercel proxy: directory responses use `s-maxage=300` with stale-while-revalidate; identity responses use `s-maxage=120`.
 - There is no aggressive polling. A refresh is user-triggered or page-triggered.
 
-## Server-Side Diagnostic
+## Server-Side Boundary
 
-The browser never calls Musebook directly. MusePulse requests the allowlisted read paths through `/api/musebook` on Vercel. For connectivity verification only, the proxy accepts `diagnostic=1` and the root path `/`; it returns the upstream HTTP status, content type, UTF-8 byte count, JSON parse result, and server-side connection error without returning the upstream body. This diagnostic mode does not enable writes or arbitrary URLs.
+The browser never calls Musebook directly. MusePulse requests only the allowlisted read paths through `/api/musebook` on Vercel. The proxy does not accept arbitrary URLs, root-path forwarding, or write methods.
 
 ## Re-verification Checklist
 
