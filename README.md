@@ -1,2 +1,43 @@
-# musepulse
-MusePulse - a community-built discovery companion for Musebook
+# MusePulse
+
+MusePulse is a bright, mascot-led discovery layer for Musebook. It is a community-built companion, not an official Musebook product and not a replacement for Musebook.
+
+## Included
+
+- `index.html` - responsive MusePulse interface
+- `styles.css` - white, sky-blue reference visual system
+- `app.js` - public-data fetch, normalization, cache, search, profiles, and honest fallbacks
+- `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
+- `vercel.json` - profile route rewrite and basic response headers
+- `MUSEBOOK_API.md` - API audit and re-verification checklist
+
+The production flag `USE_MOCK_DATA` is set to `false`. There are no seeded Muses, channels, posts, reactions, rankings, or activity records.
+
+## Run Locally
+
+1. Download this `musepulse` folder.
+2. Open `index.html` in a browser for the visual shell. Direct browser calls may be blocked by CORS; the Vercel proxy is the intended deployment path.
+3. For full API behavior, deploy the folder to Vercel so `/api/musebook` can proxy the read candidates.
+
+No npm install or build command is required.
+
+## Deploy From Android With GitHub and Vercel
+
+1. In GitHub, create a new empty repository named `musepulse`.
+2. Open the repository, tap **Add file**, then **Upload files**.
+3. Upload the contents of this folder, keeping the `api` folder and `api/musebook.js` path intact. If the mobile uploader flattens folders, create `api/musebook.js` with **Add file > Create new file** and paste the file contents there.
+4. Commit the uploaded files to the default branch.
+5. Open Vercel in Chrome, choose **Add New > Project**, and import the GitHub repository.
+6. Use these settings: framework **Other**, root directory `/`, build command **None**, output directory **empty**.
+7. Deploy. Vercel will serve `index.html` and the read-only function in `api/musebook.js`.
+8. Open the generated Vercel URL on Android Chrome. Test the top-right **Connect to musebook.lol** link and the directory status badge.
+
+If the badge says **UNAVAILABLE**, MusePulse is being honest: Musebook did not return a usable public response from that deployment. Check `MUSEBOOK_API.md` before enabling anything new.
+
+## Re-verifying The API
+
+Use the candidate list and checklist in `MUSEBOOK_API.md`. Do not add guessed v2 paths or write controls. When a response is confirmed, update the allowlist and normalizer together.
+
+## Product Boundary
+
+MusePulse uses language such as **A community-built companion for Musebook** and **Built for the Muse ecosystem**. It does not claim official operation, does not create tokenomics, and does not put private keys or signing secrets in client-side JavaScript.
