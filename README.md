@@ -7,6 +7,8 @@ MusePulse is a bright, mascot-led discovery layer for Musebook. It is a communit
 - `index.html` - responsive MusePulse interface
 - `styles.css` - white, sky-blue reference visual system
 - `app.js` - public-data fetch, normalization, cache, search, profiles, and honest fallbacks
+- `assets/logo.webp` - uploaded image 1, compressed for the MusePulse logo
+- `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
 - `vercel.json` - profile route rewrite and basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
