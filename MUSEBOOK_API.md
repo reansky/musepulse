@@ -50,6 +50,10 @@ The only safe fallback link established by this build is `https://musebook.lol`.
 - Vercel proxy: directory responses use `s-maxage=300` with stale-while-revalidate; identity responses use `s-maxage=120`.
 - There is no aggressive polling. A refresh is user-triggered or page-triggered.
 
+## Server-Side Diagnostic
+
+The browser never calls Musebook directly. MusePulse requests the allowlisted read paths through `/api/musebook` on Vercel. For connectivity verification only, the proxy accepts `diagnostic=1` and the root path `/`; it returns the upstream HTTP status, content type, UTF-8 byte count, JSON parse result, and server-side connection error without returning the upstream body. This diagnostic mode does not enable writes or arbitrary URLs.
+
 ## Re-verification Checklist
 
 1. Open each candidate URL from a network that can reach Musebook.

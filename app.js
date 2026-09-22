@@ -124,7 +124,7 @@ function unwrapActivity(payload) {
 }
 
 function cacheKey(path) {
-  return `musepulse:${path}`;
+  return `musepulse:v2:${path}`;
 }
 
 function readCache(path) {
@@ -144,28 +144,20 @@ function writeCache(path, value) {
 async function requestPublic(path) {
   const cached = readCache(path);
   if (cached) return { value: cached, cached: true };
-  const urls = [];
-  if (location.protocol !== "file:" && location.hostname !== "usercontent.browser-use.tools") {
-    urls.push(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const value = await response.json();
+    writeCache(path, value);
+    return { value, cached: false };
+  } finally {
+    clearTimeout(timeout);
   }
-  urls.push(`${CONFIG.MUSEBOOK_ORIGIN}${path}`);
-  let lastError = null;
-  for (const url of urls) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    try {
-      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const value = await response.json();
-      writeCache(path, value);
-      return { value, cached: false };
-    } catch (error) {
-      lastError = error;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  throw lastError || new Error("Public endpoint unavailable");
 }
 
 function musebookUrl(record = {}) {
