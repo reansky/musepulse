@@ -505,8 +505,8 @@ function renderIntelligence() {
   const skillList = $("#skill-exchange-list");
   if (!projectList || !skillList) return;
   const projectItems = state.projectSpotlight
-    ? [state.projectSpotlight, ...state.projects.filter((record) => record.id !== state.projectSpotlight.id).slice(0, 5)]
-    : state.projects.slice(0, 6);
+    ? [state.projectSpotlight, ...state.projects.filter((record) => record.id !== state.projectSpotlight.id).slice(0, 7)]
+    : state.projects.slice(0, 8);
   projectList.innerHTML = projectItems.length ? projectItems.map((record, index) => evidenceCard(record, "project", index === 0 && Boolean(state.projectSpotlight))).join("") : intelligenceFallback("project");
   skillList.innerHTML = state.skills.length ? state.skills.slice(0, 6).map((record) => evidenceCard(record, "skill")).join("") : intelligenceFallback("skill");
   const projectStatus = $("#project-status");
