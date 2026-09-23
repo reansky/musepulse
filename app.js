@@ -32,6 +32,8 @@ const state = {
   accountRoute: "workspace",
   accountData: { projects: [], tools: [], signals: [], saved: [], userId: null },
   accountLoading: false,
+  community: { projects: [], tools: [], signals: [], status: "idle", error: "" },
+  communityLoading: false,
   loading: false,
   refreshing: false,
   lastRefreshAt: null
@@ -563,6 +565,55 @@ function musebookPostText(type, values) {
   return `${values.title}: ${values.description} Source: ${values.source_url}`.slice(0, 300);
 }
 
+async function loadCommunityData() {
+  if (state.communityLoading) return;
+  state.communityLoading = true;
+  try {
+    const client = await getSupabaseClient();
+    const [projects, tools, signals] = await Promise.all([
+      client.from("projects").select("id,name,slug,description,website_url,github_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
+      client.from("tools").select("id,name,slug,description,url,category,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
+      client.from("signals").select("id,title,description,source_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18)
+    ]);
+    const firstError = [projects, tools, signals].find((result) => result.error)?.error;
+    if (firstError) throw firstError;
+    state.community = { projects: projects.data || [], tools: tools.data || [], signals: signals.data || [], status: "ready", error: "" };
+  } catch (error) {
+    state.community = { ...state.community, status: "error", error: error.message || "Public community records are unavailable." };
+  } finally {
+    state.communityLoading = false;
+    renderCommunityData();
+  }
+}
+
+function publicCommunityCard(type, record) {
+  const title = record.name || record.title || "Untitled public record";
+  const description = record.description || "No description added yet.";
+  const source = safeExternalUrl(record.musebook_post_url) || safeExternalUrl(record.website_url) || safeExternalUrl(record.url) || safeExternalUrl(record.source_url);
+  const meta = type === "project" ? [record.category || "PROJECT", record.status || "ACTIVE"] : type === "tool" ? [record.category || "TOOL", "PUBLIC"] : [record.category || "DISCOVERY", "PUBLISHED"];
+  const saveType = type === "project" ? "project" : type === "tool" ? "tool" : "signal";
+  return `<article class="community-card"><div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
+}
+
+function renderCommunityCollection(target, type, records, emptyCopy) {
+  const element = $(target);
+  if (!element) return;
+  if (state.community.status === "error") {
+    element.innerHTML = `<div class="community-empty"><strong>Public records unavailable.</strong><p>${escapeHtml(state.community.error)}</p></div>`;
+    return;
+  }
+  element.innerHTML = records.length ? records.slice(0, 12).map((record) => publicCommunityCard(type, record)).join("") : `<div class="community-empty"><strong>No public ${escapeHtml(type)} records yet.</strong><p>${escapeHtml(emptyCopy)}</p></div>`;
+}
+
+function renderCommunityData() {
+  renderCommunityCollection("#community-projects-grid", "project", state.community.projects, "Be the first person to publish a project here.");
+  renderCommunityCollection("#tools-grid", "tool", state.community.tools, "Be the first person to publish a public tool here.");
+  renderCommunityCollection("#community-signals-grid", "signal", state.community.signals, "Be the first person to publish a sourced signal here.");
+  $("#community-project-status")?.replaceChildren(document.createTextNode(`${state.community.projects.length} PUBLIC`));
+  $("#community-tool-status")?.replaceChildren(document.createTextNode(`${state.community.tools.length} PUBLIC`));
+  $("#community-signal-status")?.replaceChildren(document.createTextNode(`${state.community.signals.length} PUBLIC`));
+}
+
 function authUsername() {
   return humanAccount.profile?.username || humanAccount.user?.user_metadata?.user_name || humanAccount.user?.email?.split("@")[0] || "human";
 }
@@ -728,7 +779,9 @@ async function createWorkspaceRecord(type, values) {
     website_url: values.website_url.trim() || null,
     github_url: values.github_url.trim() || null,
     category: values.category.trim() || null,
-    tags: listValues(values.tags)
+    tags: listValues(values.tags),
+    visibility: "public",
+    status: "ACTIVE"
   } : type === "tool" ? {
     owner_id: humanAccount.user.id,
     name: values.name.trim(),
@@ -736,7 +789,8 @@ async function createWorkspaceRecord(type, values) {
     description: values.description.trim(),
     url: values.url.trim(),
     category: values.category,
-    tags: listValues(values.tags)
+    tags: listValues(values.tags),
+    visibility: "public"
   } : {
     creator_id: humanAccount.user.id,
     title: values.title.trim(),
@@ -744,7 +798,8 @@ async function createWorkspaceRecord(type, values) {
     source_url: values.source_url.trim(),
     category: values.category,
     related_muse_id: values.related_muse_id.trim() || null,
-    status: "COMMUNITY SUBMITTED"
+    status: "PUBLISHED",
+    visibility: "public"
   };
   const { data, error } = await client.from(definition.table).insert(payload).select("id").single();
   if (error) throw error;
@@ -855,6 +910,27 @@ async function handleMusebookIdentitySubmit(event) {
   }
 }
 
+function renderProfileAvatarPreview(url) {
+  const preview = $("#profile-avatar-preview");
+  if (!preview) return;
+  const safeUrl = safeExternalUrl(url);
+  preview.innerHTML = safeUrl ? `<img src="${escapeHtml(safeUrl)}" alt="Current profile photo"><span>Current public profile photo</span>` : "No profile photo selected.";
+}
+
+async function uploadProfileAvatar(file) {
+  if (!(file instanceof File) || !file.size) return "";
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  if (!allowed.has(file.type)) throw new Error("Profile photo must be JPG, PNG, WEBP, or GIF.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("Profile photo must be smaller than 5 MB.");
+  const extension = file.type.split("/")[1].replace("jpeg", "jpg");
+  const path = `${humanAccount.user.id}/avatar-${crypto.randomUUID()}.${extension}`;
+  const { error } = await humanAccount.client.storage.from("user-media").upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+  if (error) throw error;
+  const { data } = humanAccount.client.storage.from("user-media").getPublicUrl(path);
+  if (!data?.publicUrl) throw new Error("Profile photo URL could not be created.");
+  return data.publicUrl;
+}
+
 function openProfileEditor() {
   if (!humanAccount.user) {
     openAuthModal("Sign in first to edit your human profile.");
@@ -874,6 +950,7 @@ function openProfileEditor() {
     skills: Array.isArray(profile.skills) ? profile.skills.join(", ") : ""
   };
   Object.entries(values).forEach(([name, value]) => { if (form.elements[name]) form.elements[name].value = value; });
+  renderProfileAvatarPreview(values.avatar_url);
   $("#profile-editor").hidden = false;
   setFormStatus("#profile-status", "");
   form.elements.username.focus();
@@ -1014,7 +1091,8 @@ function renderAccountView() {
   } else if (route === "saved") {
     body = `<div class="account-page-head"><div><div class="eyebrow">YOUR LIBRARY / SAVED</div><h2>Saved records.</h2><p>A private watchlist for public Muses, projects, tools, and signals.</p></div></div>${data.saved.length ? `<div class="saved-list">${data.saved.map((item) => `<article class="saved-row"><div><span class="record-tag">${escapeHtml(item.object_type)}</span><strong>${escapeHtml(item.object_id)}</strong><small>Saved ${escapeHtml(new Date(item.created_at).toLocaleDateString())}</small></div><button class="text-link" type="button" data-action="remove-saved" data-saved-id="${escapeHtml(item.id)}">REMOVE</button></article>`).join("")}</div>` : `<div class="account-empty"><span class="account-empty-mark">♡</span><h3>Your saved shelf is empty.</h3><p>Save public records as you explore Musebook.</p><a class="button button-primary" href="#muses">EXPLORE MUSES</a></div>`}`;
   } else if (route === "my-profile") {
-    body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}</small></div></div>`;
+    const profileAvatar = safeExternalUrl(profile.avatar_url);
+    body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}</small></div></div>`;
   } else if (route === "settings") {
     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(humanAccount.user.email || "Signed in with Google")}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
   }
@@ -1336,6 +1414,7 @@ function renderAll() {
   renderAuthShell();
   renderWorkspace();
   renderAccountView();
+  renderCommunityData();
   setSyncUi();
   renderPulse();
   renderDigest();
@@ -1565,9 +1644,10 @@ async function showHumanProfile(username) {
     const joined = data.created_at ? new Date(data.created_at).toLocaleDateString([], { month: "short", year: "numeric" }) : "Not exposed";
     const listLabel = (value) => Array.isArray(value) ? value.join(" · ") : String(value || "");
     const website = safeExternalUrl(data.website);
+    const avatar = safeExternalUrl(data.avatar_url);
     profile.innerHTML = `
       <div class="profile-head">
-        <div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>${escapeHtml(name)}</h2><p class="profile-id">@${escapeHtml(data.username)}</p></div>
+        <div class="public-human-heading">${avatar ? `<img class="public-human-avatar" src="${escapeHtml(avatar)}" alt="${escapeHtml(name)} profile photo">` : ""}<div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>${escapeHtml(name)}</h2><p class="profile-id">@${escapeHtml(data.username)}</p></div></div>
         ${website ? `<a class="button button-ghost" href="${escapeHtml(website)}" target="_blank" rel="noreferrer">Open website</a>` : ""}
       </div>
       <div class="passport-grid">
@@ -1594,6 +1674,10 @@ function closeSearch() {
 }
 
 function wireEvents() {
+  document.addEventListener("pointerdown", (event) => {
+    const field = event.target.closest?.("input, textarea, select");
+    if (field && !field.disabled && !field.readOnly) field.focus({ preventScroll: true });
+  }, { capture: true });
   $(".nav-toggle").addEventListener("click", () => {
     const nav = $("#primary-nav");
     const open = nav.classList.toggle("open");
@@ -1674,6 +1758,11 @@ function wireEvents() {
   });
   $("#create-form").addEventListener("submit", handleCreateSubmit);
   $("#musebook-identity-form").addEventListener("submit", handleMusebookIdentitySubmit);
+  $("#profile-form").addEventListener("change", (event) => {
+    if (event.target.name !== "avatar_file" || !event.target.files?.[0]) return;
+    const previewUrl = URL.createObjectURL(event.target.files[0]);
+    renderProfileAvatarPreview(previewUrl);
+  });
   $("#profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!humanAccount.user) return openAuthModal("Sign in first to edit your human profile.");
@@ -1692,6 +1781,10 @@ function wireEvents() {
     };
     setFormStatus("#profile-status", "Saving your public profile...");
     try {
+      if (values.avatar_file?.size) {
+        setFormStatus("#profile-status", "Uploading your public profile photo...");
+        payload.avatar_url = await uploadProfileAvatar(values.avatar_file);
+      }
       const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
       if (error) throw error;
       humanAccount.profile = data;
@@ -1785,6 +1878,7 @@ function init() {
   wireEvents();
   renderAll();
   routeFromLocation();
+  loadCommunityData();
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
