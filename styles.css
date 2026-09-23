@@ -189,6 +189,11 @@ select:focus { border-color: var(--purple); }
 .card-meta { color: var(--muted); font: 9px var(--mono); }
 .card-link { color: var(--purple-deep); font: 10px var(--mono); text-transform: uppercase; }
 .card-link:hover { color: var(--ink); }
+.directory-viewport { max-height: 610px; overflow-x: hidden; overflow-y: auto; padding: 4px 8px 8px 2px; border: 1px solid var(--line); border-radius: 20px; background: rgba(247, 250, 255, .56); box-shadow: inset 0 0 24px rgba(115, 145, 218, .05); overscroll-behavior: contain; scrollbar-color: #a7b9ed transparent; scrollbar-width: thin; }
+.directory-viewport::-webkit-scrollbar { width: 8px; }
+.directory-viewport::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: #a7b9ed; background-clip: padding-box; }
+.directory-viewport::-webkit-scrollbar-track { background: transparent; }
+.directory-viewport .card-grid, .directory-viewport .channel-grid { padding: 8px 6px 10px 4px; }
 .muse-card { min-height: 164px; padding: 15px; border-radius: 16px; }
 .muse-card::before { left: 15px; width: 38px; }
 .muse-card-head { display: flex; align-items: center; gap: 9px; min-width: 0; margin-bottom: 12px; }
@@ -203,8 +208,6 @@ select:focus { border-color: var(--purple); }
 .muse-card .card-footer { gap: 7px; padding-top: 9px; }
 .muse-card .card-meta, .muse-card .card-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collection-note { color: var(--muted); font: 9px var(--mono); letter-spacing: .08em; white-space: nowrap; }
-.collection-more { display: flex; justify-content: center; min-height: 27px; margin-top: 17px; }
-.muse-more-button { padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 14px; background: rgba(255, 255, 255, .5); }
 .empty-state { display: grid; place-items: start; gap: 10px; min-height: 180px; padding: 28px; border: 1px dashed #c6d2f0; border-radius: 18px; background: rgba(255, 255, 255, .55); }
 .empty-state.compact { min-height: 128px; }
 .empty-state .empty-index { color: var(--purple); font: 10px var(--mono); }
@@ -217,6 +220,18 @@ select:focus { border-color: var(--purple); }
 .channel-glyph { color: var(--purple); font: 15px var(--mono); }
 .channel-name { margin-bottom: 8px; color: var(--ink); font-size: 18px; font-weight: 600; }
 .channel-description { min-height: 34px; margin-bottom: 18px; color: var(--ink-soft); font-size: 11px; line-height: 1.5; }
+.channel-card { display: block; min-height: 0; padding: 0; overflow: hidden; }
+.channel-card::before { left: 0; z-index: 2; width: 46px; }
+.channel-cover { position: relative; display: grid; place-items: center; height: 92px; overflow: hidden; background: linear-gradient(135deg, #b6c7fb, #e0eaff 54%, #c8d8ff); }
+.channel-cover::after { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(57, 83, 168, .03), rgba(38, 60, 132, .32)); content: ""; }
+.channel-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.channel-cover.no-image img { display: none; }
+.channel-cover-fallback { position: relative; z-index: 1; color: rgba(44, 69, 152, .65); font: 30px var(--mono); }
+.channel-cover-label { position: absolute; right: 10px; bottom: 8px; z-index: 2; color: rgba(255, 255, 255, .85); font: 8px var(--mono); letter-spacing: .12em; }
+.channel-card-body { padding: 14px 16px 15px; }
+.channel-card .card-top { margin-bottom: 12px; }
+.channel-card .channel-description { min-height: 32px; margin-bottom: 14px; font-size: 10px; }
+.channel-card .card-footer { padding-top: 10px; }
 
 .radar-panel { position: relative; min-height: 430px; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(135deg, #f7f9ff, #edf4ff); box-shadow: 0 14px 28px rgba(106, 130, 192, .08); }
 .network-graph { position: absolute; inset: 0; padding: 30px; }
@@ -337,6 +352,10 @@ select:focus { border-color: var(--purple); }
   .muse-avatar { width: 36px; height: 36px; border-radius: 11px; font-size: 14px; }
   .muse-card .card-title { font-size: 14px; }
   .muse-card .card-description { font-size: 9px; }
+  .directory-viewport { max-height: 520px; padding-right: 5px; border-radius: 16px; }
+  .directory-viewport .card-grid, .directory-viewport .channel-grid { padding-inline: 3px; }
+  .channel-cover { height: 82px; }
+  .channel-card-body { padding: 12px; }
   .collection-note { align-self: center; }
   .radar-panel { min-height: 365px; }
   .network-graph { padding: 15px; }

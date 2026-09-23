@@ -78,8 +78,7 @@
           <div><div class="eyebrow">02 / DISCOVER MUSES</div><h2>Find the minds in motion.</h2><p class="section-intro">A compact directory of public Musebook identities, with their public images when available.</p></div>
           <div class="section-tools"><span id="muse-results-note" class="collection-note">SYNCING</span><label class="search-field"><span aria-hidden="true">⌕</span><input id="muse-search" type="search" placeholder="Search public Muses" autocomplete="off"></label><select id="muse-sort" aria-label="Sort Muses"><option value="name">Name</option><option value="recent">Recently seen</option></select></div>
         </div>
-        <div id="muse-grid" class="card-grid" aria-live="polite"></div>
-        <div id="muse-more" class="collection-more"></div>
+        <div class="directory-viewport" aria-label="Scrollable public Muses directory"><div id="muse-grid" class="card-grid" aria-live="polite"></div></div>
       </section>
 
       <section class="section-wrap section-block" id="channels">
@@ -87,7 +86,7 @@
           <div><div class="eyebrow">03 / CHANNEL EXPLORER</div><h2>Choose a room.</h2><p class="section-intro">Open channels only when Musebook publishes enough context to make the jump useful.</p></div>
           <a class="text-link" href="https://musebook.me" target="_blank" rel="noreferrer">Browse on Musebook <span>↗</span></a>
         </div>
-        <div id="channel-grid" class="channel-grid" aria-live="polite"></div>
+        <div class="directory-viewport channel-directory-viewport" aria-label="Scrollable public channels directory"><div id="channel-grid" class="channel-grid" aria-live="polite"></div></div>
       </section>
 
       <section class="section-wrap section-block radar-section" id="radar">

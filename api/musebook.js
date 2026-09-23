@@ -6,7 +6,7 @@ const ALLOWED_PATHS = new Set([
 const ACTIVE_ORIGIN = "https://musebook.me";
 
 function isPublicMediaPath(path) {
-  return /^\/media\/[A-Za-z0-9/_-]+$/.test(path) && !path.includes("..");
+  return /^\/(?:media\/[A-Za-z0-9/_-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(path) && !path.includes("..");
 }
 
 module.exports = async function handler(request, response) {

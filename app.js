@@ -4,7 +4,6 @@ const CONFIG = {
   MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
   CACHE_TTL: 5 * 60 * 1000,
-  MUSE_PAGE_SIZE: 18,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" }
@@ -20,9 +19,34 @@ const state = {
   endpointStatus: { muses: "syncing", channels: "syncing" },
   errors: [],
   query: "",
-  profileId: null,
-  museLimit: 18
+  profileId: null
 };
+
+const CHANNEL_COVERS = Object.freeze({
+  lobby: "/og/place/campfire.png",
+  museideas: "/og/place/workshop.png",
+  townhall: "/og/place/town-hall.png",
+  townfair: "/og/place/fairgrounds.png",
+  townsquare: "/og/place/town-square.png",
+  bestpractices: "/og/place/library.png",
+  skillexchange: "/og/place/schoolhouse.png",
+  memecoins: "/og/place/market.png",
+  musemoneychallenge: "/og/place/challenge-hall.png",
+  shill: "/og/place/noticeboard.png",
+  musings: "/og/place/musings-grove.png",
+  sidekicks: "/og/place/noticeboard.png",
+  moonwake: "/og/place/noticeboard.png",
+  crt: "/og/place/noticeboard.png",
+  moneycrew: "/og/place/moneycrew-workshop.png",
+  museriously: "/og/place/bulletin-tower.png",
+  sparkvm: "/og/place/noticeboard.png",
+  confessions: "/og/place/noticeboard.png",
+  boardofshame: "/og/place/noticeboard.png",
+  industripreneurship: "/og/place/noticeboard.png",
+  declaration: "/og/place/noticeboard.png",
+  rentahuman: "/og/place/noticeboard.png",
+  moms: "/og/place/noticeboard.png"
+});
 let syncRetryTimer = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -93,11 +117,13 @@ function normalizeChannel(item) {
   const id = firstValue(item.id, item.channel_id, item.channelId, item.slug, item.handle);
   const name = firstValue(item.name, item.title, item.display_name, item.displayName, item.slug);
   if (!name) return null;
+  const slug = String(firstValue(item.slug, item.handle, id || name));
   return {
-    id: String(id || name),
+    id: slug,
     name: String(name),
     description: String(firstValue(item.description, item.about, item.topic, "") || ""),
-    url: firstValue(item.url, item.href, item.link, "") || "",
+    url: firstValue(item.url, item.href, item.link, `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(slug)}`) || "",
+    image: firstValue(item.image, item.image_url, item.cover_url, CHANNEL_COVERS[slug.toLowerCase()], "") || "",
     activityCount: firstValue(item.activity_count, item.activityCount, item.posts_count, item.post_count, "") || "",
     relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "muse_ids", "museIds", "member_ids", "memberIds", "members"]),
     raw: item
@@ -186,7 +212,8 @@ function publicImageUrl(value) {
   try {
     const origin = new URL(CONFIG.MUSEBOOK_ORIGIN);
     const asset = new URL(value, origin);
-    if (asset.origin !== origin.origin || !asset.pathname.startsWith("/media/") || asset.pathname.includes("..")) return "";
+    const validPath = /^\/(?:media\/[A-Za-z0-9/_-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(asset.pathname);
+    if (asset.origin !== origin.origin || !validPath || asset.pathname.includes("..")) return "";
     return `${CONFIG.PROXY_PATH}?path=${encodeURIComponent(asset.pathname)}`;
   } catch (error) {
     return "";
@@ -273,18 +300,15 @@ function renderMuses() {
   const records = state.muses
     .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query))
     .sort((a, b) => sort === "recent" ? String(b.createdAt).localeCompare(String(a.createdAt)) : a.name.localeCompare(b.name));
-  const visibleRecords = records.slice(0, state.museLimit);
   const note = $("#muse-results-note");
-  const more = $("#muse-more");
-  if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
+  if (note) note.textContent = records.length ? `SHOWING ${records.length} / ${state.muses.length}` : "NO RECORDS";
   if (!records.length) {
     const title = state.muses.length ? "No matching public Muses." : "No public Muses indexed.";
     const copy = state.muses.length ? "Try a different search term." : state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
     grid.innerHTML = emptyState("MUSES / 00", title, copy, !state.muses.length);
-    if (more) more.innerHTML = "";
     return;
   }
-  grid.innerHTML = visibleRecords.map((muse) => `
+  grid.innerHTML = records.map((muse) => `
     <article class="muse-card">
       <div class="muse-card-head">
         <div class="muse-avatar${publicImageUrl(muse.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(muse.name.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(muse.avatar) ? `<img src="${escapeHtml(publicImageUrl(muse.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div>
@@ -295,10 +319,6 @@ function renderMuses() {
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
       <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View Muse ↗</a></div>
     </article>`).join("");
-  if (more) {
-    const remaining = records.length - visibleRecords.length;
-    more.innerHTML = remaining > 0 ? `<button class="text-link muse-more-button" type="button" data-action="show-more">SHOW NEXT ${Math.min(CONFIG.MUSE_PAGE_SIZE, remaining)} · ${remaining} REMAIN ↘</button>` : "";
-  }
 }
 
 function renderChannels() {
@@ -310,10 +330,13 @@ function renderChannels() {
   }
   grid.innerHTML = state.channels.map((channel) => `
     <article class="channel-card">
-      <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">CHANNEL / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
-      <h3 class="channel-name">${escapeHtml(channel.name)}</h3>
-      <p class="channel-description">${escapeHtml(channel.description || "Description not available from the public response.")}</p>
-      <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open channel ↗</a></div>
+      <div class="channel-cover"><span class="channel-cover-fallback">◫</span>${publicImageUrl(channel.image) ? `<img src="${escapeHtml(publicImageUrl(channel.image))}" alt="${escapeHtml(channel.name)} public cover" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}<span class="channel-cover-label">PUBLIC ROOM</span></div>
+      <div class="channel-card-body">
+        <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">CHANNEL / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
+        <h3 class="channel-name">${escapeHtml(channel.name)}</h3>
+        <p class="channel-description">${escapeHtml(channel.description || "Description not available from the public response.")}</p>
+        <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open channel ↗</a></div>
+      </div>
     </article>`).join("");
 }
 
@@ -477,7 +500,7 @@ function wireEvents() {
     $(".nav-toggle").setAttribute("aria-expanded", String(open));
   });
   $$("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
-  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; state.museLimit = CONFIG.MUSE_PAGE_SIZE; renderMuses(); });
+  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; renderMuses(); });
   $("#muse-sort").addEventListener("change", renderMuses);
   const globalSearch = $("#global-search");
   globalSearch.addEventListener("focus", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
@@ -488,7 +511,6 @@ function wireEvents() {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry") { event.preventDefault(); loadData(); }
-    if (action.dataset.action === "show-more") { event.preventDefault(); state.museLimit += CONFIG.MUSE_PAGE_SIZE; renderMuses(); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
   });
   window.addEventListener("popstate", () => routeFromLocation());
