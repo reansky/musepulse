@@ -1695,6 +1695,8 @@ async function loadData({ force = false } = {}) {
     state.loading = false;
     state.refreshing = false;
     renderAll();
+    const profileMatch = window.location.pathname.match(/^\/muse\/(.+)$/);
+    if (profileMatch && state.profileId) showProfile(decodeURIComponent(profileMatch[1]), { scroll: false });
     if (syncRetryTimer) clearTimeout(syncRetryTimer);
     if (state.status !== "ready" || Object.values(state.endpointStatus).includes("stale")) {
       syncRetryTimer = setTimeout(() => {
@@ -1740,7 +1742,7 @@ function showGraphNode(kind, id) {
   else showChannelProfile(id);
 }
 
-function showProfile(id) {
+function showProfile(id, { scroll = true } = {}) {
   const profile = $("#profile-view");
   const muse = state.muses.find((record) => String(record.id) === String(id));
   const activity = muse ? state.activity.filter((event) => event.actorId === String(muse.id) || event.participantIds?.map(String).includes(String(muse.id))) : [];
@@ -1775,7 +1777,7 @@ function showProfile(id) {
        <div class="profile-panel"><h3>Evidence boundary</h3><p>MusePulse observes public records only. Project threads and Schoolhouse evidence are shown with their source; formal skills, rankings, and inferred connections are not claimed.</p></div>
     </div>
     <div class="profile-source"><span>SOURCE</span><strong>Musebook</strong><small>${escapeHtml(formatSyncTime(state.lastSync).replace("Last synchronized: ", "Observed "))}</small></div>`;
-  profile.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function showHumanProfile(username) {
@@ -2001,7 +2003,9 @@ function wireEvents() {
 function routeFromLocation() {
   const match = window.location.pathname.match(/^\/muse\/(.+)$/);
   if (match) {
-    showProfile(decodeURIComponent(match[1]));
+    state.profileId = decodeURIComponent(match[1]);
+    showProfile(state.profileId, { scroll: false });
+    ensureViewData("muses");
     return;
   }
   const humanMatch = window.location.pathname.match(/^\/profile\/(.+)$/);
