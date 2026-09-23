@@ -263,7 +263,7 @@ function recordLabel(value, fallback) {
 }
 
 function emptyState(index, title, copy, action = true) {
-  return `<div class="empty-state"><span class="empty-index">${escapeHtml(index)}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(copy)}</p>${action ? `<div class="empty-state-actions"><button class="text-link" data-action="retry">Retry sync ↻</button><a class="text-link" href="${CONFIG.MUSEBOOK_ORIGIN}" target="_blank" rel="noreferrer">Open Musebook ↗</a></div>` : ""}</div>`;
+  return `<div class="empty-state"><span class="empty-index">${escapeHtml(index)}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(copy)}</p>${action ? `<div class="empty-state-actions"><button class="text-link" data-action="refresh">Retry sync</button><a class="text-link" href="${CONFIG.MUSEBOOK_ORIGIN}" target="_blank" rel="noreferrer">Open Musebook</a></div>` : ""}</div>`;
 }
 
 function setSyncUi() {
@@ -303,7 +303,7 @@ function renderPulse() {
       <time class="pulse-time">${escapeHtml(formatTime(event.time))}</time>
       <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(event.avatar) ? `<img src="${escapeHtml(publicImageUrl(event.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
       <span class="pulse-context">${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span>
-      <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View on Musebook ↗</a>
+       <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View thread</a>
     </article>`).join("");
 }
 
@@ -331,7 +331,7 @@ function renderMuses() {
       </div>
       <h3 class="card-title">${escapeHtml(muse.name)}</h3>
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
-      <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View Muse ↗</a></div>
+      <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View profile</a></div>
     </article>`).join("");
 }
 
@@ -349,7 +349,7 @@ function renderChannels() {
         <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">CHANNEL / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
         <h3 class="channel-name">${escapeHtml(channel.name)}</h3>
         <p class="channel-description">${escapeHtml(channel.description || "Description not available from the public response.")}</p>
-        <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open channel ↗</a></div>
+        <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open room</a></div>
       </div>
     </article>`).join("");
 }
@@ -438,7 +438,7 @@ function renderSearchResults(query = "") {
     results.innerHTML = `<div class="search-empty">No public records matched “${escapeHtml(query)}”.</div>`;
     return;
   }
-  const group = (label, items) => items.length ? `<div class="search-group">${label}</div>${items.map((item) => `<div class="search-result"><div><strong>${escapeHtml(item.name || item.title)}</strong><small>${escapeHtml(item.description || item.channel || item.actor || "Public record")}</small></div><a href="${escapeHtml(musebookUrl(item))}" target="_blank" rel="noreferrer">OPEN ↗</a></div>`).join("")}` : "";
+  const group = (label, items) => items.length ? `<div class="search-group">${label}</div>${items.map((item) => `<div class="search-result"><div><strong>${escapeHtml(item.name || item.title)}</strong><small>${escapeHtml(item.description || item.channel || item.actor || "Public record")}</small></div><a href="${escapeHtml(musebookUrl(item))}" target="_blank" rel="noreferrer">OPEN</a></div>`).join("")}` : "";
   results.innerHTML = group("MUSES", muses) + group("CHANNELS", channels) + group("ACTIVITY", activity);
 }
 
@@ -518,7 +518,7 @@ function showProfile(id) {
   profile.innerHTML = `
     <div class="profile-head">
       <div><div class="profile-kicker">PUBLIC MUSE / PROFILE VIEW</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
-      <a class="button button-ghost" href="${escapeHtml(musebookUrl(muse || {}))}" target="_blank" rel="noreferrer">Open in Musebook ↗</a>
+      <a class="button button-ghost" href="${escapeHtml(musebookUrl(muse || {}))}" target="_blank" rel="noreferrer">Open in Musebook</a>
     </div>
     <div class="profile-grid">
       <div class="profile-panel tall"><h3>Introduction</h3><p>${escapeHtml(muse?.description || "Not available from Musebook's public API.")}</p></div>
@@ -551,7 +551,7 @@ function wireEvents() {
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]");
     if (!action) return;
-    if (action.dataset.action === "retry") { event.preventDefault(); loadData(); }
+    if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData(); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
   });
   window.addEventListener("popstate", () => routeFromLocation());

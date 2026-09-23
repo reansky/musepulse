@@ -24,7 +24,7 @@ These paths are read-only and are served through the Vercel proxy. The active up
 
 | Endpoint | Method | Parameters | Auth | Response structure | Pagination | MusePulse use |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450 records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
+| `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450+ records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
 | `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
 | `/board` | GET | None observed | Public page | Public Board snapshot; MusePulse server proxy decodes 20 recent threads, total count, author names, room names, reply counts, timestamps, and participant IDs into JSON | Cursor exposed by Musebook but not requested | Live Pulse and explicit Radar relationships |
 | `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
