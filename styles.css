@@ -307,6 +307,26 @@ select:focus { border-color: var(--purple); }
 .about-boundary { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; align-items: start; gap: 28px; margin-top: 42px; padding-top: 20px; border-top: 1px solid var(--line); }
 .about-boundary p { max-width: 640px; margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 .about-boundary .text-link { white-space: nowrap; }
+.about-usage { margin-top: 82px; padding-top: 22px; border-top: 1px solid var(--line); }
+.about-usage-heading { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 28px; }
+.about-usage-heading h3, .about-create-head h3 { max-width: 490px; color: var(--ink); font: 500 clamp(27px, 3vw, 40px)/1.06 var(--serif); letter-spacing: -.04em; }
+.about-usage-heading p, .about-create-head p { max-width: 560px; margin: 15px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.7; }
+.about-use-grid { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 38px; border-top: 1px solid var(--line); }
+.about-use-card { display: grid; align-content: start; gap: 13px; min-height: 190px; padding: 18px 16px 15px 0; border-right: 1px solid var(--line); }
+.about-use-card + .about-use-card { padding-left: 16px; }
+.about-use-card:last-child { border-right: 0; }
+.about-use-card > span { color: var(--gold); font: 9px var(--mono); letter-spacing: .12em; }
+.about-use-card strong { color: var(--ink); font: 700 14px var(--sans); }
+.about-use-card p { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
+.about-create-flow { display: grid; grid-template-columns: .75fr 1.25fr; gap: 70px; margin-top: 72px; padding-top: 22px; border-top: 1px solid var(--line); }
+.about-create-head { display: grid; align-content: start; gap: 17px; }
+.about-create-head h3 { margin-top: 4px; }
+.about-create-head p { margin-top: 0; }
+.about-flow-list { margin: 0; padding: 0; border-top: 1px solid var(--line); list-style: none; }
+.about-flow-list li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 20px; padding: 19px 0; border-bottom: 1px solid var(--line); }
+.about-flow-list li > span { color: var(--gold); font: 11px var(--mono); letter-spacing: .08em; }
+.about-flow-list strong { display: block; margin-bottom: 7px; color: var(--ink); font: 700 14px var(--sans); }
+.about-flow-list p { max-width: 600px; margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
 
 .profile-view { padding-block: 78px; }
 .profile-view[hidden] { display: none; }
@@ -347,6 +367,7 @@ select:focus { border-color: var(--purple); }
   .card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .channel-grid { grid-template-columns: repeat(2, 1fr); }
   .methodology, .about-grid { grid-template-columns: 1fr; gap: 42px; }
+  .about-create-flow { grid-template-columns: 1fr; gap: 42px; }
   .footer { grid-template-columns: 1fr 1fr; }
   .footer-meta { justify-items: start; text-align: left; }
 }
@@ -414,6 +435,12 @@ select:focus { border-color: var(--purple); }
   .methodology-points { grid-template-columns: 1fr; }
   .about-boundary { grid-template-columns: 1fr; gap: 12px; }
   .about-boundary .text-link { justify-self: start; }
+  .about-usage-heading { grid-template-columns: 1fr; gap: 16px; }
+  .about-use-grid { grid-template-columns: repeat(2, 1fr); }
+  .about-use-card:nth-child(2) { border-right: 0; }
+  .about-use-card:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .about-use-card:nth-child(3) { padding-left: 0; }
+  .about-use-card:nth-child(4) { padding-left: 16px; }
   .methodology-points > div, .methodology-points > div + div { min-height: auto; padding: 17px 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .methodology-points > div:last-child { border-bottom: 0; }
   .profile-head { align-items: start; flex-direction: column; }
