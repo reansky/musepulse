@@ -9,14 +9,13 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 - `app.js` - public-data fetch, normalization, bounded refresh, evidence Pulse, local snapshots, search, passports, and honest fallbacks
 - `assets/logo.webp` - uploaded image 1, compressed for the MusePulse logo
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
-- `assets/hero.mp4` - looping hero video
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
 - `api/config.js` - server-side endpoint for the public Supabase client configuration
 - `supabase/migrations/` - Phase 1 human-account schema, RLS, and private user-media storage policies
 - `vercel.json` - profile, workspace, project, tool, and signal route rewrites plus basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
-The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified. Project Radar and Skill Exchange now read the verified public `/projects` page; cards remain evidence threads rather than inferred products or formal skills.
+Data views lazy-load the verified public datasets only when opened, then refresh every 60 seconds while the page is active and refresh again when it returns to the foreground. This keeps the Home public-discovery page light. It uses bounded polling because no public Musebook realtime stream has been verified. Project Radar and Skill Exchange now read the verified public `/projects` page; cards remain evidence threads rather than inferred products or formal skills.
 
 The primary navigation is hash-routed into separate views so Home, Pulse, Muses, Projects, Skills, Graph, and Method do not stack into one long page. Muses also contains the public channel explorer, while Home contains the digest and overview metrics.
 
