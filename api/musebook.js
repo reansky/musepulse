@@ -17,7 +17,7 @@ function decodeBoardSnapshot(html) {
   const scriptEnd = html.indexOf("</script>", markerIndex);
   const script = html.slice(markerIndex, scriptEnd < 0 ? html.length : scriptEnd);
   const start = marker.length;
-  const end = script.lastIndexOf("\");");
+  const end = script.lastIndexOf("\");") + 1;
   if (end <= start) return null;
 
   const table = JSON.parse(JSON.parse(script.slice(start, end)));
