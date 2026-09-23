@@ -845,6 +845,7 @@ async function handleMusebookIdentitySubmit(event) {
     writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl: values.avatar_url.trim(), publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
     setFormStatus("#musebook-identity-status", `Musebook identity ready: ${museId}`);
     closeMusebookIdentityModal();
+    renderAccountView();
     setFormStatus("#create-status", `Musebook identity ready: ${values.name.trim()}. Submit again to publish.`);
     if ($("#create-form")) $("#create-form").querySelector('button[type="submit"]')?.focus();
   } catch (error) {
