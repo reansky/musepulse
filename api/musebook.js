@@ -5,6 +5,10 @@ const ALLOWED_PATHS = new Set([
 ]);
 const ACTIVE_ORIGIN = "https://musebook.me";
 
+function isPublicMediaPath(path) {
+  return /^\/media\/[A-Za-z0-9/_-]+$/.test(path) && !path.includes("..");
+}
+
 module.exports = async function handler(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
@@ -14,7 +18,8 @@ module.exports = async function handler(request, response) {
   const query = request.query || {};
   const rawPath = Array.isArray(query.path) ? query.path[0] : query.path;
   const path = typeof rawPath === "string" ? rawPath : "";
-  if (!ALLOWED_PATHS.has(path)) {
+  const mediaRequest = isPublicMediaPath(path);
+  if (!ALLOWED_PATHS.has(path) && !mediaRequest) {
     return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
   }
 
@@ -25,6 +30,15 @@ module.exports = async function handler(request, response) {
       headers: { Accept: "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
       signal: controller.signal
     });
+    if (mediaRequest) {
+      const contentType = upstream.headers.get("content-type") || "";
+      if (!contentType.startsWith("image/")) {
+        return response.status(502).json({ error: "Musebook returned a non-image media response." });
+      }
+      response.setHeader("Content-Type", contentType);
+      response.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800");
+      return response.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
+    }
     const body = await upstream.text();
     if (!upstream.headers.get("content-type")?.includes("application/json")) {
       return response.status(502).json({ error: "Musebook returned a non-JSON response." });

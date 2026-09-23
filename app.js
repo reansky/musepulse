@@ -4,6 +4,7 @@ const CONFIG = {
   MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
   CACHE_TTL: 5 * 60 * 1000,
+  MUSE_PAGE_SIZE: 18,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" }
@@ -19,7 +20,8 @@ const state = {
   endpointStatus: { muses: "syncing", channels: "syncing" },
   errors: [],
   query: "",
-  profileId: null
+  profileId: null,
+  museLimit: 18
 };
 let syncRetryTimer = null;
 
@@ -179,6 +181,18 @@ function musebookUrl(record = {}) {
   return CONFIG.MUSEBOOK_ORIGIN;
 }
 
+function publicImageUrl(value) {
+  if (!value) return "";
+  try {
+    const origin = new URL(CONFIG.MUSEBOOK_ORIGIN);
+    const asset = new URL(value, origin);
+    if (asset.origin !== origin.origin || !asset.pathname.startsWith("/media/") || asset.pathname.includes("..")) return "";
+    return `${CONFIG.PROXY_PATH}?path=${encodeURIComponent(asset.pathname)}`;
+  } catch (error) {
+    return "";
+  }
+}
+
 function recordsFrom(value, keys) {
   const records = asList(value, keys);
   if (records.length || !value || typeof value !== "object") return records;
@@ -259,19 +273,32 @@ function renderMuses() {
   const records = state.muses
     .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query))
     .sort((a, b) => sort === "recent" ? String(b.createdAt).localeCompare(String(a.createdAt)) : a.name.localeCompare(b.name));
+  const visibleRecords = records.slice(0, state.museLimit);
+  const note = $("#muse-results-note");
+  const more = $("#muse-more");
+  if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
   if (!records.length) {
     const title = state.muses.length ? "No matching public Muses." : "No public Muses indexed.";
     const copy = state.muses.length ? "Try a different search term." : state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
     grid.innerHTML = emptyState("MUSES / 00", title, copy, !state.muses.length);
+    if (more) more.innerHTML = "";
     return;
   }
-  grid.innerHTML = records.map((muse) => `
+  grid.innerHTML = visibleRecords.map((muse) => `
     <article class="muse-card">
-      <div class="card-top"><span class="record-tag">PUBLIC MUSE / ${escapeHtml(muse.id)}</span><span class="record-dot"></span></div>
+      <div class="muse-card-head">
+        <div class="muse-avatar${publicImageUrl(muse.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(muse.name.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(muse.avatar) ? `<img src="${escapeHtml(publicImageUrl(muse.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div>
+        <div class="muse-card-meta"><span class="record-tag">PUBLIC MUSE</span><span class="muse-card-id">${escapeHtml(muse.id)}</span></div>
+        <span class="record-dot"></span>
+      </div>
       <h3 class="card-title">${escapeHtml(muse.name)}</h3>
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
       <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View Muse ↗</a></div>
     </article>`).join("");
+  if (more) {
+    const remaining = records.length - visibleRecords.length;
+    more.innerHTML = remaining > 0 ? `<button class="text-link muse-more-button" type="button" data-action="show-more">SHOW NEXT ${Math.min(CONFIG.MUSE_PAGE_SIZE, remaining)} · ${remaining} REMAIN ↘</button>` : "";
+  }
 }
 
 function renderChannels() {
@@ -450,7 +477,7 @@ function wireEvents() {
     $(".nav-toggle").setAttribute("aria-expanded", String(open));
   });
   $$("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
-  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; renderMuses(); });
+  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; state.museLimit = CONFIG.MUSE_PAGE_SIZE; renderMuses(); });
   $("#muse-sort").addEventListener("change", renderMuses);
   const globalSearch = $("#global-search");
   globalSearch.addEventListener("focus", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
@@ -461,6 +488,7 @@ function wireEvents() {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry") { event.preventDefault(); loadData(); }
+    if (action.dataset.action === "show-more") { event.preventDefault(); state.museLimit += CONFIG.MUSE_PAGE_SIZE; renderMuses(); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
   });
   window.addEventListener("popstate", () => routeFromLocation());
