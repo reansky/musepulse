@@ -28,7 +28,7 @@ html { scroll-behavior: smooth; scrollbar-gutter: stable; overflow-x: hidden; }
 body {
   margin: 0;
   min-width: 320px;
-  overflow-x: hidden;
+  overflow-x: clip;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
