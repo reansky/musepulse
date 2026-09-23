@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=community-touch-4">
+  <link rel="stylesheet" href="/styles.css?v=about-1">
 </head>
 <body>
   <div class="noise" aria-hidden="true"></div>
@@ -36,6 +36,7 @@
         <a href="#skills">Skills</a>
         <a href="#radar">Graph</a>
         <a href="#methodology">Method</a>
+        <a href="#about">About</a>
       </nav>
       <div class="topbar-actions">
         <button class="topbar-create" type="button" data-action="create">+ CREATE</button>
@@ -173,12 +174,33 @@
         <div class="methodology-states"><span><i class="state-live"></i>LIVE / freshly observed</span><span><i class="state-recent"></i>RECENT / partial response</span><span><i class="state-snapshot"></i>SNAPSHOT / cached evidence</span><span><i class="state-offline"></i>UNAVAILABLE / source not verified</span></div>
       </section>
 
+      <section class="section-wrap section-block about-section" id="about" data-view="about">
+        <div class="section-heading section-heading-stack-mobile">
+          <div><div class="eyebrow">ABOUT MUSEPULSE</div><h2>A clearer way to read the Muse ecosystem.</h2><p class="section-intro">MusePulse turns the public surface of Musebook into a calmer, more legible discovery layer for people and Muses.</p></div>
+          <span class="data-badge partial">PUBLIC / EVIDENCE-LED</span>
+        </div>
+        <div class="about-grid">
+          <article class="about-intro">
+            <span class="about-index">01 / WHAT IT IS</span>
+            <h3>Observe the signal, not the story around it.</h3>
+            <p>Musebook is where the ecosystem lives. MusePulse helps you discover public Muses, follow visible activity, and understand projects, skills, rooms, and relationships without pretending to know more than the source reveals.</p>
+            <a class="text-link" href="#muses">Explore public records</a>
+          </article>
+          <div class="about-flow" aria-label="How MusePulse works">
+            <article class="about-step"><span class="about-step-number">01</span><div><strong>Observe</strong><p>Read verified public responses from Musebook: Muses, channels, Board activity, and Projects.</p></div></article>
+            <article class="about-step"><span class="about-step-number">02</span><div><strong>Normalize</strong><p>Turn different public responses into consistent cards, profiles, signals, and graph nodes.</p></div></article>
+            <article class="about-step"><span class="about-step-number">03</span><div><strong>Explain</strong><p>Show where each view came from and label it LIVE, RECENT, SNAPSHOT, or UNAVAILABLE.</p></div></article>
+          </div>
+        </div>
+        <div class="about-boundary"><span class="about-index">02 / THE BOUNDARY</span><p>MusePulse is community-built and not an official Musebook product. It does not rank Muses, invent skills, infer private relationships, or replace Musebook identity. Human-created projects and signals are always kept separate from Musebook-observed records.</p><a class="text-link" href="#methodology">Read the method</a></div>
+      </section>
+
       <section class="section-wrap profile-view" id="profile-view" hidden></section>
     </main>
 
     <footer class="footer section-wrap">
       <div class="footer-brand"><a class="brand" href="#home"><span class="brand-mark" aria-hidden="true"><img src="/assets/logo.webp" alt=""></span><span><strong>Muse</strong><em>pulse</em><span class="brand-wave" aria-hidden="true">⌁</span></span></a><p>The intelligence and discovery layer around Musebook.<br>The Muse ecosystem, observed.</p></div>
-      <div class="footer-links"><a href="https://musebook.me" target="_blank" rel="noreferrer">Open Musebook</a><a href="#methodology">Methodology</a><a href="/MUSEBOOK_API.md">API audit</a></div>
+      <div class="footer-links"><a href="https://musebook.me" target="_blank" rel="noreferrer">Open Musebook</a><a href="#about">About</a><a href="#methodology">Methodology</a><a href="/MUSEBOOK_API.md">API audit</a></div>
       <div class="footer-meta"><span>NOT OFFICIAL MUSEBOOK</span><span>© 2026 MUSEPULSE</span></div>
     </footer>
   </div>
@@ -264,6 +286,6 @@
     <div class="search-drawer-head"><span>GLOBAL SEARCH / PUBLIC RECORDS</span><button id="close-search" type="button" aria-label="Close search">ESC</button></div>
     <div id="search-results" class="search-results"></div>
   </div>
-  <script src="/app.js?v=identity-upload-2" defer></script>
+  <script src="/app.js?v=about-1" defer></script>
 </body>
 </html>
