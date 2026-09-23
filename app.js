@@ -734,17 +734,20 @@ async function initHumanAuth() {
       callbackUrl.searchParams.delete("code");
       callbackUrl.searchParams.delete("state");
       window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+      document.querySelectorAll(".modal-backdrop").forEach((modal) => { modal.hidden = true; });
     }
     const { data, error } = await client.auth.getSession();
     if (error) throw error;
     humanAccount.session = data.session;
     humanAccount.user = data.session?.user || null;
     humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
+    if (humanAccount.user) $("#auth-modal").hidden = true;
     client.auth.onAuthStateChange((_event, session) => {
       humanAccount.session = session;
       humanAccount.user = session?.user || null;
       humanAccount.profile = null;
       humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
+      if (humanAccount.user) $("#auth-modal").hidden = true;
       renderAuthShell();
       renderWorkspace(true);
       if (humanAccount.user) window.setTimeout(() => loadHumanProfile(), 0);
@@ -1793,10 +1796,6 @@ function closeSearch() {
 }
 
 function wireEvents() {
-  document.addEventListener("pointerdown", (event) => {
-    const field = event.target.closest?.("input, textarea, select");
-    if (field && !field.disabled && !field.readOnly) field.focus({ preventScroll: true });
-  }, { capture: true });
   $(".nav-toggle").addEventListener("click", () => {
     const nav = $("#primary-nav");
     const open = nav.classList.toggle("open");
@@ -1869,6 +1868,14 @@ function wireEvents() {
   document.addEventListener("click", (event) => {
     const createType = event.target.closest("[data-create-type]");
     if (!createType) return;
+    if (createType.dataset.createType === "musebook-identity") {
+      closeCreateMenu();
+      if (readMusebookIdentity()) {
+        openCreateMenu();
+        setFormStatus("#create-status", "Musebook identity already connected in this browser.");
+      } else openMusebookIdentityModal();
+      return;
+    }
     if (!humanAccount.user) {
       renderCreateForm(createType.dataset.createType);
        openAuthModal("Sign in with Google or X before saving this submission.");
