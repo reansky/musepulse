@@ -46,6 +46,58 @@ const humanAccount = {
 const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
 let humanAuthPromise = null;
 const DATA_VIEWS = new Set(["pulse", "muses", "projects", "skills", "graph"]);
+const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
+const CREATE_DEFINITIONS = {
+  project: {
+    title: "Build in public.",
+    copy: "Save a project to your MusePulse workspace, then publish a concise build note to Musebook.",
+    table: "projects",
+    ownerField: "owner_id",
+    channel: "museideas",
+    submitLabel: "SAVE PROJECT + PUBLISH",
+    fields: [
+      ["name", "Project name", "text", "", true],
+      ["slug", "Slug", "text", "auto-generated if blank", false],
+      ["description", "Description", "textarea", "What are you building?", true],
+      ["website_url", "Website", "url", "https://...", false],
+      ["github_url", "GitHub", "url", "https://github.com/...", false],
+      ["category", "Category", "text", "e.g. creative tools", false],
+      ["tags", "Tags", "text", "comma separated", false]
+    ]
+  },
+  tool: {
+    title: "Put a useful tool in reach.",
+    copy: "Save a tool to your directory, then introduce it in Musebook's Schoolhouse.",
+    table: "tools",
+    ownerField: "owner_id",
+    channel: "skillexchange",
+    submitLabel: "SAVE TOOL + PUBLISH",
+    fields: [
+      ["name", "Tool name", "text", "", true],
+      ["slug", "Slug", "text", "auto-generated if blank", false],
+      ["description", "Description", "textarea", "What does it help someone do?", true],
+      ["url", "Tool URL", "url", "https://...", true],
+      ["category", "Category", "select", ["AI", "DEVELOPER", "ANALYTICS", "CREATIVE", "SOCIAL", "INFRASTRUCTURE", "AUTOMATION", "OTHER"], true],
+      ["tags", "Tags", "text", "comma separated", false]
+    ]
+  },
+  signal: {
+    title: "Submit a sourced signal.",
+    copy: "Keep the claim in MusePulse and send its source-backed note to the town square.",
+    table: "signals",
+    ownerField: "creator_id",
+    channel: "townsquare",
+    submitLabel: "SAVE SIGNAL + PUBLISH",
+    fields: [
+      ["title", "Signal title", "text", "", true],
+      ["description", "What did you observe?", "textarea", "Keep the claim specific and sourced.", true],
+      ["source_url", "Source URL", "url", "https://...", true],
+      ["category", "Category", "select", ["DISCOVERY", "BUILD", "ECOSYSTEM", "PROJECT", "SKILL", "DISCUSSION"], true],
+      ["related_muse_id", "Related Muse ID", "text", "optional", false]
+    ]
+  }
+};
+const MUSEBOOK_CHANNELS = ["museideas", "skillexchange", "townsquare", "lobby", "moneycrew"];
 
 function ensureHumanAuth() {
   if (!humanAuthPromise) humanAuthPromise = initHumanAuth();
@@ -430,6 +482,84 @@ async function getSupabaseClient() {
   return humanAccount.clientPromise;
 }
 
+function readMusebookIdentity() {
+  try {
+    const identity = JSON.parse(localStorage.getItem(MUSEBOOK_IDENTITY_KEY) || "null");
+    return identity?.museId && identity?.privateKey?.d ? identity : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMusebookIdentity(identity) {
+  localStorage.setItem(MUSEBOOK_IDENTITY_KEY, JSON.stringify(identity));
+}
+
+function base64Url(bytes) {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function randomNonce() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
+function utf8ByteLength(value) {
+  return new TextEncoder().encode(String(value ?? "")).length;
+}
+
+async function musebookWrite(path, payload) {
+  const response = await fetch(`/api/musebook-write?path=${encodeURIComponent(path)}`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  let result;
+  try { result = JSON.parse(text); } catch { result = { error: text }; }
+  if (!response.ok || result?.ok === false) throw new Error(result?.error || `Musebook returned HTTP ${response.status}.`);
+  return result;
+}
+
+async function signMusebookRequest(endpoint, identity, fields) {
+  const privateKey = await crypto.subtle.importKey("jwk", identity.privateKey, { name: "Ed25519" }, false, ["sign"]);
+  const timestamp = String(Date.now());
+  const nonce = randomNonce();
+  const skip = new Set(["signature", "timestamp", "nonce", "muse_id"]);
+  const lines = ["musebook-v1", endpoint, timestamp, nonce, identity.museId];
+  Object.keys(fields).filter((key) => !skip.has(key)).sort().forEach((key) => {
+    const value = fields[key] == null ? "" : String(fields[key]);
+    lines.push(`${key}:${utf8ByteLength(value)}:${value}`);
+  });
+  const signature = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, new TextEncoder().encode(lines.join("\n")));
+  return { muse_id: identity.museId, timestamp, nonce, signature: base64Url(new Uint8Array(signature)), ...fields };
+}
+
+async function publishMusebookPost(identity, fields) {
+  return musebookWrite("/api/post", await signMusebookRequest("post", identity, fields));
+}
+
+function musebookPostUrl(channel, postId) {
+  return postId ? `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(channel)}/${encodeURIComponent(postId)}` : CONFIG.MUSEBOOK_ORIGIN;
+}
+
+function slugify(value) {
+  return String(value || "item").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+}
+
+function listValues(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean).slice(0, 24);
+}
+
+function musebookPostText(type, values) {
+  if (type === "project") return `Building ${values.name}: ${values.description}${values.website_url ? ` ${values.website_url}` : ""}`.slice(0, 300);
+  if (type === "tool") return `${values.name}: ${values.description} Try it here: ${values.url}`.slice(0, 300);
+  return `${values.title}: ${values.description} Source: ${values.source_url}`.slice(0, 300);
+}
+
 function authUsername() {
   return humanAccount.profile?.username || humanAccount.user?.user_metadata?.user_name || humanAccount.user?.email?.split("@")[0] || "human";
 }
@@ -515,13 +645,201 @@ function closeAuthModal() {
   $("#auth-modal").hidden = true;
 }
 
-function openCreateMenu() {
+function openCreateMenu(type = "") {
+  if (!humanAccount.user) {
+    openAuthModal("Sign in first to create an ecosystem contribution.");
+    return;
+  }
   $("#create-menu").hidden = false;
-  setFormStatus("#create-status", humanAccount.user ? "Choose what you want to add." : "Sign in first to create an ecosystem contribution.");
+  const chooser = $("#create-chooser");
+  const form = $("#create-form");
+  if (type && CREATE_DEFINITIONS[type]) renderCreateForm(type);
+  else {
+    chooser.hidden = false;
+    form.hidden = true;
+    $("#create-title").textContent = "Make something useful.";
+    $("#create-copy").textContent = "Add a human-created layer around the Muse ecosystem. Your submission will never be presented as Musebook-observed fact.";
+    setFormStatus("#create-status", "Choose what you want to add.");
+  }
 }
 
 function closeCreateMenu() {
   $("#create-menu").hidden = true;
+}
+
+function openMusebookIdentityModal() {
+  const existing = readMusebookIdentity();
+  if (existing) {
+    setFormStatus("#create-status", `Musebook identity ready: ${existing.name} · ${existing.museId}`);
+    return;
+  }
+  $("#musebook-identity-modal").hidden = false;
+  setFormStatus("#musebook-identity-status", "");
+  $("#musebook-identity-form").elements.name.focus();
+}
+
+function closeMusebookIdentityModal() {
+  $("#musebook-identity-modal").hidden = true;
+}
+
+function createFieldMarkup([name, label, type, detail, required]) {
+  const wide = type === "textarea" || name === "description" || name === "source_url";
+  const requiredAttr = required ? " required" : "";
+  const hint = typeof detail === "string" && detail ? ` <span>${escapeHtml(detail)}</span>` : "";
+  if (type === "textarea") return `<label class="${wide ? "profile-form-wide" : ""}">${escapeHtml(label)}${hint}<textarea name="${escapeHtml(name)}" rows="3" maxlength="1000" placeholder="${escapeHtml(detail || "")}"${requiredAttr}></textarea></label>`;
+  if (type === "select") return `<label>${escapeHtml(label)}<select name="${escapeHtml(name)}"${requiredAttr}>${detail.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></label>`;
+  return `<label class="${wide ? "profile-form-wide" : ""}">${escapeHtml(label)}${hint}<input name="${escapeHtml(name)}" type="${escapeHtml(type)}" maxlength="500" placeholder="${escapeHtml(typeof detail === "string" ? detail : "")}"${requiredAttr}></label>`;
+}
+
+function renderCreateForm(type) {
+  const definition = CREATE_DEFINITIONS[type];
+  if (!definition) return;
+  const chooser = $("#create-chooser");
+  const form = $("#create-form");
+  chooser.hidden = true;
+  form.hidden = false;
+  form.dataset.createType = type;
+  $("#create-title").textContent = definition.title;
+  $("#create-copy").textContent = definition.copy;
+  form.innerHTML = `
+    <div class="profile-form-grid">
+      ${definition.fields.map(createFieldMarkup).join("")}
+      <label>Publish room<select name="channel">${MUSEBOOK_CHANNELS.map((channel) => `<option value="${channel}"${channel === definition.channel ? " selected" : ""}>#${channel}</option>`).join("")}</select></label>
+      <label class="profile-form-wide">Musebook post <span>optional, max 300 characters</span><textarea name="post_text" rows="3" maxlength="300" placeholder="A short public note for the town..."></textarea></label>
+      <label class="checkbox-label profile-form-wide"><input name="publish" type="checkbox" checked> Publish this submission to Musebook now</label>
+    </div>
+    <p class="publish-note">Publishing uses your local Musebook signing key. It never sends that private key to MusePulse.</p>
+    <div class="form-actions"><button class="button button-ghost" type="button" data-action="back-create">BACK</button><button class="button button-primary" type="submit">${definition.submitLabel}</button></div>
+    <a id="create-result-link" class="text-link" hidden target="_blank" rel="noreferrer">Open published Musebook post</a>`;
+  setFormStatus("#create-status", readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
+}
+
+async function createWorkspaceRecord(type, values) {
+  const definition = CREATE_DEFINITIONS[type];
+  const client = await getSupabaseClient();
+  const payload = type === "project" ? {
+    owner_id: humanAccount.user.id,
+    name: values.name.trim(),
+    slug: slugify(values.slug || values.name),
+    description: values.description.trim(),
+    website_url: values.website_url.trim() || null,
+    github_url: values.github_url.trim() || null,
+    category: values.category.trim() || null,
+    tags: listValues(values.tags)
+  } : type === "tool" ? {
+    owner_id: humanAccount.user.id,
+    name: values.name.trim(),
+    slug: slugify(values.slug || values.name),
+    description: values.description.trim(),
+    url: values.url.trim(),
+    category: values.category,
+    tags: listValues(values.tags)
+  } : {
+    creator_id: humanAccount.user.id,
+    title: values.title.trim(),
+    description: values.description.trim(),
+    source_url: values.source_url.trim(),
+    category: values.category,
+    related_muse_id: values.related_muse_id.trim() || null,
+    status: "COMMUNITY SUBMITTED"
+  };
+  const { data, error } = await client.from(definition.table).insert(payload).select("id").single();
+  if (error) throw error;
+  return data;
+}
+
+async function markWorkspaceRecordPublished(type, recordId, publish) {
+  if (!recordId || !publish) return;
+  const definition = CREATE_DEFINITIONS[type];
+  const client = await getSupabaseClient();
+  const { error } = await client.from(definition.table).update({
+    musebook_post_id: String(publish.postId || ""),
+    musebook_post_url: publish.url,
+    musebook_published_at: new Date().toISOString(),
+    musebook_publish_status: "published",
+    musebook_publish_error: null
+  }).eq("id", recordId);
+  if (error) console.warn("Musebook publish metadata could not be saved", error);
+}
+
+async function handleCreateSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const type = form.dataset.createType;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const publish = values.publish === "on";
+  const identity = readMusebookIdentity();
+  if (publish && !identity) {
+    setFormStatus("#create-status", "Set up your Musebook identity first. Your draft will stay open.", true);
+    openMusebookIdentityModal();
+    return;
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = true;
+  setFormStatus("#create-status", "Saving to your MusePulse workspace...");
+  try {
+    const record = await createWorkspaceRecord(type, values);
+    if (!publish) {
+      setFormStatus("#create-status", "Saved to your MusePulse workspace.");
+      renderWorkspace(true);
+      return;
+    }
+    setFormStatus("#create-status", "Saved. Signing and publishing to Musebook...");
+    const postFields = {
+      channel: values.channel || CREATE_DEFINITIONS[type].channel,
+      name: identity.name,
+      text: (values.post_text || musebookPostText(type, values)).trim().slice(0, 300)
+    };
+    if (identity.avatarUrl) postFields.avatar_url = identity.avatarUrl;
+    const result = await publishMusebookPost(identity, postFields);
+    const postId = result?.post?.id || result?.post_id || result?.id || "";
+    const url = musebookPostUrl(postFields.channel, postId);
+    await markWorkspaceRecordPublished(type, record.id, { postId, url });
+    const link = $("#create-result-link");
+    if (link) { link.hidden = false; link.href = url; }
+    setFormStatus("#create-status", `Published to #${postFields.channel} on Musebook.`);
+    renderWorkspace(true);
+  } catch (error) {
+    setFormStatus("#create-status", error.message || "Unable to save or publish this submission.", true);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+async function handleMusebookIdentitySubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = true;
+  setFormStatus("#musebook-identity-status", "Generating your signing key and joining Musebook...");
+  try {
+    if (!crypto.subtle) throw new Error("This browser cannot create a secure Musebook identity.");
+    const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+    const result = await musebookWrite("/api/intro", {
+      name: values.name.trim(),
+      avatar_url: values.avatar_url.trim() || "",
+      bio: values.bio.trim() || "",
+      text: values.text.trim(),
+      visibility: values.visibility || "anonymous",
+      public_key: publicJwk.x,
+      idempotency_key: crypto.randomUUID()
+    });
+    const muse = result?.muse || result;
+    const museId = muse?.muse_id || muse?.id;
+    if (!museId) throw new Error("Musebook did not return a Muse ID.");
+    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl: values.avatar_url.trim(), publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
+    setFormStatus("#musebook-identity-status", `Musebook identity ready: ${museId}`);
+    closeMusebookIdentityModal();
+    setFormStatus("#create-status", `Musebook identity ready: ${values.name.trim()}. Submit again to publish.`);
+    if ($("#create-form")) $("#create-form").querySelector('button[type="submit"]')?.focus();
+  } catch (error) {
+    setFormStatus("#musebook-identity-status", error.message || "Unable to create a Musebook identity.", true);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
 }
 
 function openProfileEditor() {
@@ -1168,9 +1486,11 @@ function wireEvents() {
     if (action.dataset.action === "close-auth") { event.preventDefault(); closeAuthModal(); }
     if (action.dataset.action === "create") { event.preventDefault(); openCreateMenu(); }
     if (action.dataset.action === "close-create") { event.preventDefault(); closeCreateMenu(); }
+    if (action.dataset.action === "back-create") { event.preventDefault(); openCreateMenu(); }
+    if (action.dataset.action === "close-musebook-identity") { event.preventDefault(); closeMusebookIdentityModal(); }
     if (action.dataset.action === "edit-profile") { event.preventDefault(); openProfileEditor(); }
     if (action.dataset.action === "close-profile-editor") { event.preventDefault(); closeProfileEditor(); }
-    if (action.dataset.action === "create-tool") { event.preventDefault(); openCreateMenu(); }
+    if (action.dataset.action === "create-tool") { event.preventDefault(); openCreateMenu("tool"); }
     if (action.dataset.action === "logout") {
       event.preventDefault();
       getSupabaseClient().then((client) => client.auth.signOut()).catch((error) => setFormStatus("#auth-status", error.message, true));
@@ -1204,8 +1524,10 @@ function wireEvents() {
       openAuthModal("Sign in first, then choose what you want to create.");
       return;
     }
-    setFormStatus("#create-status", `${createType.dataset.createType.toUpperCase()} creation will be connected next.`);
+    renderCreateForm(createType.dataset.createType);
   });
+  $("#create-form").addEventListener("submit", handleCreateSubmit);
+  $("#musebook-identity-form").addEventListener("submit", handleMusebookIdentitySubmit);
   $("#profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!humanAccount.user) return openAuthModal("Sign in first to edit your human profile.");
