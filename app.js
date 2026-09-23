@@ -853,21 +853,29 @@ function renderRadar() {
     graph.innerHTML = "";
     $("#radar-empty").classList.remove("hidden");
     $("#radar-count").textContent = "0 observable links";
+    $("#radar-source").textContent = "AWAITING EXPLICIT BOARD RELATIONSHIPS";
     return;
   }
   $("#radar-empty").classList.add("hidden");
-  const width = 900;
-  const height = 350;
-  const center = { x: width / 2, y: height / 2 };
-  const points = nodes.map((node, index) => {
-    const angle = (Math.PI * 2 * index) / nodes.length - Math.PI / 2;
-    const radius = node.kind === "muse" ? 130 : 95;
+  const compact = window.innerWidth <= 680;
+  const width = compact ? 420 : 1100;
+  const height = 520;
+  const center = compact ? { x: 210, y: 240 } : { x: 550, y: 254 };
+  const museNodes = nodes.filter((node) => node.kind === "muse");
+  const channelNodes = nodes.filter((node) => node.kind === "channel");
+  const placeOnOrbit = (orbitNodes, radius, offset) => orbitNodes.map((node, index) => {
+    const angle = offset + (Math.PI * 2 * index) / Math.max(orbitNodes.length, 1);
     return { ...node, x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
   });
+  const points = [
+    ...placeOnOrbit(museNodes, compact ? 145 : 205, -Math.PI / 2),
+    ...placeOnOrbit(channelNodes, compact ? 90 : 122, -Math.PI / 2 + Math.PI / Math.max(channelNodes.length, 1))
+  ];
+  const pointByKey = new Map(points.map((point) => [`${point.kind}:${point.id}`, point]));
   const lines = links.map((link) => {
-    const source = points.find((point) => point.id === link.source.id);
-    const target = points.find((point) => point.id === link.target.id);
-    return source && target ? `<line class="graph-link" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"/>` : "";
+    const source = pointByKey.get(`${link.source.kind}:${link.source.id}`);
+    const target = pointByKey.get(`${link.target.kind}:${link.target.id}`);
+    return source && target ? `<line class="graph-link" data-link-key="${escapeHtml(link.key)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"/>` : "";
   }).join("");
   const clips = points.map((point, index) => {
     const radius = point.kind === "muse" ? 19 : 22;
@@ -876,12 +884,15 @@ function renderRadar() {
   const pointMarkup = points.map((point, index) => {
     const radius = point.kind === "muse" ? 19 : 22;
     const image = publicImageUrl(point.kind === "muse" ? point.avatar : point.image);
-    const label = point.name.slice(0, 15);
-    const labelWidth = Math.max(52, label.length * 6.1 + 14);
-    return `<g class="graph-node ${point.kind}" data-action="graph-node" data-node-kind="${point.kind}" data-node-id="${escapeHtml(point.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(point.name)}"><circle cx="${point.x}" cy="${point.y}" r="${radius + 3}" class="graph-node-halo"/>${image ? `<image href="${escapeHtml(image)}" x="${point.x - radius + 2}" y="${point.y - radius + 2}" width="${(radius - 2) * 2}" height="${(radius - 2) * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#radar-clip-${index})"/>` : `<text x="${point.x}" y="${point.y + 5}" class="graph-initial">${escapeHtml(Array.from(point.name.trim())[0]?.toUpperCase() || "M")}</text>`}<circle cx="${point.x}" cy="${point.y}" r="${radius}" class="graph-node-ring"/><rect x="${point.x - labelWidth / 2}" y="${point.y + radius + 8}" width="${labelWidth}" height="18" rx="9" class="graph-label-bg"/><text x="${point.x}" y="${point.y + radius + 20}" class="graph-label">${escapeHtml(label)}</text></g>`;
+    const label = point.name.length > 18 ? `${point.name.slice(0, 17)}...` : point.name;
+    const labelWidth = Math.max(72, Math.min(150, label.length * 6.1 + 22));
+    return `<g class="graph-node ${point.kind}" data-action="graph-node" data-node-kind="${point.kind}" data-node-id="${escapeHtml(point.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(point.name)}"><title>${escapeHtml(point.name)}</title><circle cx="${point.x}" cy="${point.y}" r="${radius + 10}" class="graph-node-halo"/><circle cx="${point.x}" cy="${point.y}" r="${radius + 7}" class="graph-node-pulse"/>${image ? `<image href="${escapeHtml(image)}" x="${point.x - radius + 2}" y="${point.y - radius + 2}" width="${(radius - 2) * 2}" height="${(radius - 2) * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#radar-clip-${index})"/>` : `<text x="${point.x}" y="${point.y + 5}" class="graph-initial">${escapeHtml(Array.from(point.name.trim())[0]?.toUpperCase() || "M")}</text>`}<circle cx="${point.x}" cy="${point.y}" r="${radius}" class="graph-node-ring"/><rect x="${point.x - labelWidth / 2}" y="${point.y + radius + 13}" width="${labelWidth}" height="20" rx="10" class="graph-label-bg"/><text x="${point.x}" y="${point.y + radius + 26}" class="graph-label">${escapeHtml(label)}</text></g>`;
   }).join("");
-  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records"><defs>${clips}</defs>${lines}<circle cx="${center.x}" cy="${center.y}" r="42" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="32" class="graph-core"/><text x="${center.x}" y="${center.y + 4}" class="graph-core-label">MUSEBOOK</text>${pointMarkup}</svg>`;
+  const outerOrbit = compact ? { x: 168, y: 150 } : { x: 236, y: 196 };
+  const innerOrbit = compact ? { x: 102, y: 88 } : { x: 145, y: 112 };
+  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Observable Musebook records"><defs>${clips}<radialGradient id="graph-core-glow"><stop offset="0" stop-color="#8fe8dd" stop-opacity=".32"/><stop offset="1" stop-color="#8fe8dd" stop-opacity="0"/></radialGradient></defs><g class="graph-orbits"><ellipse cx="${center.x}" cy="${center.y}" rx="${outerOrbit.x}" ry="${outerOrbit.y}" class="graph-orbit graph-orbit-outer"/><ellipse cx="${center.x}" cy="${center.y}" rx="${innerOrbit.x}" ry="${innerOrbit.y}" class="graph-orbit graph-orbit-inner"/><circle cx="${center.x}" cy="${center.y}" r="80" class="graph-orbit-core"/><circle cx="${center.x}" cy="${center.y}" r="104" class="graph-core-glow"/></g><g class="graph-links">${lines}</g><g class="graph-core-mark"><circle cx="${center.x}" cy="${center.y}" r="49" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="37" class="graph-core"/><text x="${center.x}" y="${center.y - 1}" class="graph-core-label">MUSEBOOK</text><text x="${center.x}" y="${center.y + 14}" class="graph-core-subtitle">PUBLIC BOARD</text></g><g class="graph-points">${pointMarkup}</g></svg>`;
   $("#radar-count").textContent = `${links.length} observable link${links.length === 1 ? "" : "s"}`;
+  $("#radar-source").textContent = `${points.length} NODES / ${links.length} EXPLICIT LINKS`;
 }
 
 function renderAll() {
