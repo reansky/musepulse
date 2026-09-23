@@ -29,6 +29,9 @@ const state = {
   profileId: null,
   threadCache: new Map(),
   activeThreadPath: "",
+  accountRoute: "workspace",
+  accountData: { projects: [], tools: [], signals: [], saved: [], userId: null },
+  accountLoading: false,
   loading: false,
   refreshing: false,
   lastRefreshAt: null
@@ -578,7 +581,7 @@ function renderAuthShell() {
   const signedIn = humanAccount.status === "signed_in" && humanAccount.user;
   if (trigger) trigger.textContent = signedIn ? `@${authUsername()}` : "LOGIN";
   if (!signedIn && menu) menu.hidden = true;
-  if (profileLink && signedIn) profileLink.href = `/profile/${encodeURIComponent(authUsername())}`;
+  if (profileLink && signedIn) profileLink.href = "#my-profile";
   if (signedIn) {
     $("#workspace-status").textContent = "SIGNED IN";
     $("#workspace-status").className = "data-badge ready";
@@ -586,6 +589,7 @@ function renderAuthShell() {
     $("#workspace-status").textContent = humanAccount.status === "error" ? "UNAVAILABLE" : "LOGIN REQUIRED";
     $("#workspace-status").className = `data-badge${humanAccount.status === "error" ? " error" : " partial"}`;
   }
+  renderAccountView();
 }
 
 async function loadHumanProfile() {
@@ -646,20 +650,19 @@ function closeAuthModal() {
 }
 
 function openCreateMenu(type = "") {
-  if (!humanAccount.user) {
-    openAuthModal("Sign in first to create an ecosystem contribution.");
-    return;
-  }
   $("#create-menu").hidden = false;
   const chooser = $("#create-chooser");
   const form = $("#create-form");
-  if (type && CREATE_DEFINITIONS[type]) renderCreateForm(type);
+  if (type && CREATE_DEFINITIONS[type]) {
+    renderCreateForm(type);
+    if (!humanAccount.user) openAuthModal("Sign in with Google before saving this submission.");
+  }
   else {
     chooser.hidden = false;
     form.hidden = true;
     $("#create-title").textContent = "Make something useful.";
     $("#create-copy").textContent = "Add a human-created layer around the Muse ecosystem. Your submission will never be presented as Musebook-observed fact.";
-    setFormStatus("#create-status", "Choose what you want to add.");
+    setFormStatus("#create-status", humanAccount.user ? "Choose what you want to add." : "Choose a format. You will need to sign in before saving.");
   }
 }
 
@@ -767,6 +770,11 @@ async function handleCreateSubmit(event) {
   const form = event.currentTarget;
   const type = form.dataset.createType;
   const values = Object.fromEntries(new FormData(form).entries());
+  if (!humanAccount.user) {
+    setFormStatus("#create-status", "Sign in with Google before saving this submission.", true);
+    openAuthModal("Sign in with Google before saving this submission.");
+    return;
+  }
   const publish = values.publish === "on";
   const identity = readMusebookIdentity();
   if (publish && !identity) {
@@ -903,6 +911,112 @@ function renderWorkspace(force = false) {
   }).catch(() => { delete content.dataset.loading; });
 }
 
+const ACCOUNT_ROUTES = new Set(["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"]);
+
+function accountRouteLabel(route) {
+  return {
+    workspace: "MY WORKSPACE",
+    "my-projects": "MY PROJECTS",
+    "my-tools": "MY TOOLS",
+    "my-signals": "MY SIGNALS",
+    saved: "SAVED",
+    "my-profile": "MY PROFILE",
+    settings: "SETTINGS"
+  }[route] || "MY WORKSPACE";
+}
+
+function accountStatusLabel(record) {
+  if (record.musebook_publish_status === "published") return "PUBLISHED TO MUSEBOOK";
+  if (record.musebook_publish_status === "failed") return "PUBLISH FAILED";
+  return "MUSEPULSE ONLY";
+}
+
+function accountRecordCard(type, record) {
+  const title = record.name || record.title || "Untitled submission";
+  const description = record.description || "No description added yet.";
+  const id = record.id || "";
+  const publishUrl = safeExternalUrl(record.musebook_post_url);
+  const meta = type === "project" ? [record.category || "PROJECT", record.status || "IDEA"] : type === "tool" ? [record.category || "OTHER", record.url || "LINK NOT ADDED"] : [record.category || "DISCOVERY", record.status || "COMMUNITY SUBMITTED"];
+  return `<article class="account-record-card"><div class="account-record-top"><span class="record-tag">${escapeHtml(type.toUpperCase())}</span><span class="data-badge${record.musebook_publish_status === "published" ? " ready" : " partial"}">${escapeHtml(accountStatusLabel(record))}</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="account-record-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div>${publishUrl ? `<div class="account-record-actions"><a class="text-link" href="${escapeHtml(publishUrl)}" target="_blank" rel="noreferrer">OPEN MUSEBOOK POST</a></div>` : ""}</article>`;
+}
+
+function accountListMarkup(type, records, emptyTitle, emptyCopy, createType) {
+  if (!records.length) return `<div class="account-empty"><span class="account-empty-mark">⌁</span><h3>${escapeHtml(emptyTitle)}</h3><p>${escapeHtml(emptyCopy)}</p><button class="button button-primary" type="button" data-action="create-${escapeHtml(createType)}">CREATE ${escapeHtml(createType.toUpperCase())}</button></div>`;
+  return `<div class="account-record-grid">${records.map((record) => accountRecordCard(type, record)).join("")}</div>`;
+}
+
+async function loadAccountData() {
+  if (!humanAccount.user || !humanAccount.client || state.accountLoading) return;
+  if (state.accountData.userId === humanAccount.user.id && state.accountData.loadedAt && Date.now() - state.accountData.loadedAt < 1000) return;
+  state.accountLoading = true;
+  try {
+    const userId = humanAccount.user.id;
+    const [projects, tools, signals, saved] = await Promise.all([
+      humanAccount.client.from("projects").select("id,name,slug,description,website_url,github_url,category,status,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("tools").select("id,name,slug,description,url,category,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("signals").select("id,title,description,source_url,category,status,related_muse_id,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("creator_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("saved_items").select("id,object_type,object_id,created_at").eq("user_id", userId).order("created_at", { ascending: false })
+    ]);
+    const firstError = [projects, tools, signals, saved].find((result) => result.error)?.error;
+    if (firstError) throw firstError;
+    state.accountData = { projects: projects.data || [], tools: tools.data || [], signals: signals.data || [], saved: saved.data || [], userId, loadedAt: Date.now() };
+  } catch (error) {
+    state.accountData = { ...state.accountData, userId: humanAccount.user.id, loadedAt: Date.now(), error: error.message || "Account data unavailable." };
+  } finally {
+    state.accountLoading = false;
+    renderAccountView();
+  }
+}
+
+async function removeSavedItem(id) {
+  if (!humanAccount.client || !humanAccount.user || !id) return;
+  const previous = state.accountData.saved;
+  state.accountData.saved = previous.filter((item) => String(item.id) !== String(id));
+  renderAccountView();
+  const { error } = await humanAccount.client.from("saved_items").delete().eq("id", id).eq("user_id", humanAccount.user.id);
+  if (error) {
+    state.accountData.saved = previous;
+    renderAccountView();
+    setFormStatus("#auth-status", error.message, true);
+  }
+}
+
+function clearMusebookIdentity() {
+  localStorage.removeItem(MUSEBOOK_IDENTITY_KEY);
+  renderAccountView();
+}
+
+function renderAccountView() {
+  const view = $("#account-view");
+  if (!view || view.hidden) return;
+  if (!humanAccount.user) {
+    view.innerHTML = `<div class="account-auth"><div class="eyebrow">MUSEPULSE / PRIVATE SPACE</div><h2>Sign in to open your workspace.</h2><p>Your projects, tools, signals, saved records, profile, and settings live behind your human account.</p><button class="button button-primary" type="button" data-action="auth">LOGIN TO MUSEPULSE</button></div>`;
+    return;
+  }
+  const route = ACCOUNT_ROUTES.has(state.accountRoute) ? state.accountRoute : "workspace";
+  const data = state.accountData;
+  const profile = humanAccount.profile || {};
+  const identity = readMusebookIdentity();
+  let body = "";
+  if (route === "workspace") {
+    body = `<div class="account-hero"><div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>Welcome back, ${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>One place to make, publish, save, and manage your presence around the Muse ecosystem.</p></div><button class="button button-primary" type="button" data-action="create">+ CREATE</button></div><div class="account-stat-grid"><div><span>PROJECTS</span><strong>${data.projects.length}</strong><small>your builds</small></div><div><span>TOOLS</span><strong>${data.tools.length}</strong><small>your utilities</small></div><div><span>SIGNALS</span><strong>${data.signals.length}</strong><small>your observations</small></div><div><span>SAVED</span><strong>${data.saved.length}</strong><small>your watchlist</small></div></div><div class="account-quick-grid"><a href="#my-projects"><strong>MY PROJECTS</strong><small>Keep your builds legible and published.</small></a><a href="#my-tools"><strong>MY TOOLS</strong><small>Give useful things a durable home.</small></a><a href="#my-signals"><strong>MY SIGNALS</strong><small>Review every sourced submission.</small></a><a href="#saved"><strong>SAVED</strong><small>Return to what you want to watch.</small></a><a href="#my-profile"><strong>MY PROFILE</strong><small>Shape your human introduction.</small></a><a href="#settings"><strong>SETTINGS</strong><small>Control account and local identity.</small></a></div>`;
+  } else if (route === "my-projects") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / PROJECTS</div><h2>My projects.</h2><p>Projects you own in MusePulse, with their Musebook publishing state.</p></div><button class="button button-primary" type="button" data-action="create-project">+ CREATE PROJECT</button></div>${accountListMarkup("project", data.projects, "No projects yet.", "Start with a build note. Save it here and publish it to the Workshop.", "project")}`;
+  } else if (route === "my-tools") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / TOOLS</div><h2>My tools.</h2><p>Useful things you have published or are preparing to publish.</p></div><button class="button button-primary" type="button" data-action="create-tool">+ CREATE TOOL</button></div>${accountListMarkup("tool", data.tools, "No tools yet.", "Give your next useful thing a home in the directory.", "tool")}`;
+  } else if (route === "my-signals") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / SIGNALS</div><h2>My signals.</h2><p>Source-backed observations you have submitted to the ecosystem.</p></div><button class="button button-primary" type="button" data-action="create-signal">+ CREATE SIGNAL</button></div>${accountListMarkup("signal", data.signals, "No signals yet.", "Submit a clear observation with its source attached.", "signal")}`;
+  } else if (route === "saved") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR LIBRARY / SAVED</div><h2>Saved records.</h2><p>A private watchlist for public Muses, projects, tools, and signals.</p></div></div>${data.saved.length ? `<div class="saved-list">${data.saved.map((item) => `<article class="saved-row"><div><span class="record-tag">${escapeHtml(item.object_type)}</span><strong>${escapeHtml(item.object_id)}</strong><small>Saved ${escapeHtml(new Date(item.created_at).toLocaleDateString())}</small></div><button class="text-link" type="button" data-action="remove-saved" data-saved-id="${escapeHtml(item.id)}">REMOVE</button></article>`).join("")}</div>` : `<div class="account-empty"><span class="account-empty-mark">♡</span><h3>Your saved shelf is empty.</h3><p>Save public records as you explore Musebook.</p><a class="button button-primary" href="#muses">EXPLORE MUSES</a></div>`}`;
+  } else if (route === "my-profile") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}</small></div></div>`;
+  } else if (route === "settings") {
+    body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(humanAccount.user.email || "Signed in with Google")}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
+  }
+  view.innerHTML = `<div class="account-shell"><div class="account-tabs">${["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"].map((item) => `<a class="${item === route ? "active" : ""}" href="#${item}">${escapeHtml(accountRouteLabel(item))}</a>`).join("")}</div>${body}${data.error ? `<p class="form-status form-status-error">${escapeHtml(data.error)}</p>` : ""}</div>`;
+  if (state.accountData.userId !== humanAccount.user.id || !state.accountData.loadedAt) loadAccountData();
+}
+
 function recordLabel(value, fallback) {
   return value ? escapeHtml(value) : escapeHtml(fallback);
 }
@@ -950,7 +1064,7 @@ function renderPulse() {
       <div class="pulse-time-block"><span class="pulse-category">${escapeHtml(event.category)}</span><time class="pulse-time">${escapeHtml(formatTime(event.time))}</time></div>
       <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(event.avatar, "", "eager")}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
       <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small>Source: ${escapeHtml(event.source)}</small></div>
-      <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>
+       <div class="pulse-actions"><a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>${saveControl("signal", event.id)}</div>
     </article>`).join("");
 }
 
@@ -977,7 +1091,7 @@ function renderMuses() {
         <span class="record-dot"></span>
       </div>
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
-      <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View profile</a></div>
+       <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View profile</a>${saveControl("muse", muse.id)}</div>
     </article>`).join("");
 }
 
@@ -1034,7 +1148,7 @@ function evidenceCard(record, kind, featured = false) {
     <h3>${escapeHtml(record.title)}</h3>
     <p>${escapeHtml(record.excerpt || "The public thread does not expose an excerpt.")}</p>
     <div class="evidence-card-meta"><span>${escapeHtml(record.roomName)}</span><span>${escapeHtml(record.author)}</span><span>${record.replies} replies</span></div>
-    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}"${threadPath ? ` data-action="thread" data-thread-path="${escapeHtml(threadPath)}"` : " target=\"_blank\" rel=\"noreferrer\""}>Open full thread</a>
+     <div class="evidence-card-actions"><a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}"${threadPath ? ` data-action="thread" data-thread-path="${escapeHtml(threadPath)}"` : " target=\"_blank\" rel=\"noreferrer\""}>Open full thread</a>${saveControl(isSkill ? "signal" : "project", record.id)}</div>
   </article>`;
 }
 
@@ -1216,6 +1330,7 @@ function renderRadar() {
 function renderAll() {
   renderAuthShell();
   renderWorkspace();
+  renderAccountView();
   setSyncUi();
   renderPulse();
   renderDigest();
@@ -1244,6 +1359,25 @@ function renderSearchResults(query = "") {
   }
   const group = (label, items) => items.length ? `<div class="search-group">${label}</div>${items.map((item) => `<div class="search-result"><div><strong>${escapeHtml(item.name || item.title)}</strong><small>${escapeHtml(item.description || item.channel || item.actor || "Public record")}</small></div><a href="${escapeHtml(musebookUrl(item))}" target="_blank" rel="noreferrer">OPEN</a></div>`).join("")}` : "";
   results.innerHTML = group("MUSES", muses) + group("CHANNELS", channels) + group("ACTIVITY", activity);
+}
+
+function saveControl(type, id) {
+  return `<button class="save-control" type="button" data-action="save-item" data-save-type="${escapeHtml(type)}" data-save-id="${escapeHtml(id)}">SAVE</button>`;
+}
+
+async function saveItem(type, id) {
+  if (!humanAccount.user) {
+    openAuthModal("Sign in to save this public record.");
+    return;
+  }
+  if (!type || !id) return;
+  const { data, error } = await humanAccount.client.from("saved_items").insert({ user_id: humanAccount.user.id, object_type: type, object_id: String(id) }).select("id,object_type,object_id,created_at").single();
+  if (error && error.code !== "23505") {
+    setFormStatus("#auth-status", error.message, true);
+    return;
+  }
+  if (data) state.accountData.saved = [data, ...state.accountData.saved.filter((item) => item.id !== data.id)];
+  setFormStatus("#auth-status", error?.code === "23505" ? "Already saved." : "Saved to your library.");
 }
 
 function extractMuseActivity(rawItems) {
@@ -1461,6 +1595,7 @@ function wireEvents() {
     $(".nav-toggle").setAttribute("aria-expanded", String(open));
   });
   $all("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
+  $all("#user-menu a").forEach((link) => link.addEventListener("click", () => { $("#user-menu").hidden = true; }));
   $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; renderMuses(); });
   $("#muse-sort").addEventListener("change", renderMuses);
   const globalSearch = $("#global-search");
@@ -1490,7 +1625,13 @@ function wireEvents() {
     if (action.dataset.action === "close-musebook-identity") { event.preventDefault(); closeMusebookIdentityModal(); }
     if (action.dataset.action === "edit-profile") { event.preventDefault(); openProfileEditor(); }
     if (action.dataset.action === "close-profile-editor") { event.preventDefault(); closeProfileEditor(); }
+    if (action.dataset.action === "create-project") { event.preventDefault(); openCreateMenu("project"); }
     if (action.dataset.action === "create-tool") { event.preventDefault(); openCreateMenu("tool"); }
+    if (action.dataset.action === "create-signal") { event.preventDefault(); openCreateMenu("signal"); }
+    if (action.dataset.action === "remove-saved") { event.preventDefault(); removeSavedItem(action.dataset.savedId); }
+    if (action.dataset.action === "save-item") { event.preventDefault(); saveItem(action.dataset.saveType, action.dataset.saveId); }
+    if (action.dataset.action === "setup-musebook-identity") { event.preventDefault(); openMusebookIdentityModal(); }
+    if (action.dataset.action === "clear-musebook-identity") { event.preventDefault(); clearMusebookIdentity(); }
     if (action.dataset.action === "logout") {
       event.preventDefault();
       getSupabaseClient().then((client) => client.auth.signOut()).catch((error) => setFormStatus("#auth-status", error.message, true));
@@ -1520,8 +1661,8 @@ function wireEvents() {
     const createType = event.target.closest("[data-create-type]");
     if (!createType) return;
     if (!humanAccount.user) {
-      closeCreateMenu();
-      openAuthModal("Sign in first, then choose what you want to create.");
+      renderCreateForm(createType.dataset.createType);
+      openAuthModal("Sign in with Google before saving this submission.");
       return;
     }
     renderCreateForm(createType.dataset.createType);
@@ -1584,6 +1725,13 @@ function routeFromLocation() {
   }
   $("#profile-view").hidden = true;
   const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+  if (ACCOUNT_ROUTES.has(hash)) {
+    state.accountRoute = hash;
+    setActiveView("account");
+    ensureHumanAuth();
+    renderAccountView();
+    return;
+  }
   const view = {
     top: "home",
     home: "home",
