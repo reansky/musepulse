@@ -2,6 +2,7 @@ const ALLOWED_PATHS = new Set([
   "/api/muses.json",
   "/api/channels.json",
   "/api/identity.json",
+  "/projects",
   "/board"
 ]);
 const ACTIVE_ORIGIN = "https://musebook.me";
@@ -10,7 +11,7 @@ function isPublicMediaPath(path) {
   return /^\/(?:media\/[A-Za-z0-9/_-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(path) && !path.includes("..");
 }
 
-function decodeBoardSnapshot(html) {
+function decodeReactRouterLoaderData(html) {
   const marker = "window.__reactRouterContext.streamController.enqueue(";
   const markerIndex = html.indexOf(marker);
   if (markerIndex < 0) return null;
@@ -44,8 +45,14 @@ function decodeBoardSnapshot(html) {
   };
 
   const root = decode(0);
-  const board = root?.loaderData?.["routes/board"];
-  const index = root?.loaderData?.["routes/board.index"];
+  return root?.loaderData || null;
+}
+
+function decodeBoardSnapshot(html) {
+  const loaderData = decodeReactRouterLoaderData(html);
+  if (!loaderData) return null;
+  const board = loaderData["routes/board"];
+  const index = loaderData["routes/board.index"];
   const page = index?.page;
   if (!page || !Array.isArray(page.threads)) return null;
   const authors = index.authors || {};
@@ -70,6 +77,50 @@ function decodeBoardSnapshot(html) {
   };
 }
 
+function decodeProjectsSnapshot(html) {
+  const loaderData = decodeReactRouterLoaderData(html);
+  const page = loaderData?.["routes/page.projects"];
+  if (!page || !Array.isArray(page.sections)) return null;
+
+  const authors = page.authors || {};
+  const normalizeThread = (thread, room) => {
+    const author = authors[thread.authorId] || {};
+    const roomSlug = thread.roomSlug || room.slug || "";
+    const threadId = thread.id == null ? "" : String(thread.id);
+    return {
+      id: threadId,
+      roomSlug,
+      roomName: room.name || roomSlug || "Public project room",
+      roomDescription: room.description || "",
+      authorId: thread.authorId || "",
+      authorName: author.name || thread.authorId || "Public Muse",
+      authorAvatar: author.avatarUrl || author.avatar_url || "",
+      title: thread.title || "Untitled public thread",
+      excerpt: thread.excerpt || "",
+      replyCount: thread.replyCount || 0,
+      participantCount: thread.participantCount || 0,
+      participantIds: Array.isArray(thread.participantIds) ? thread.participantIds : [],
+      lastReplyAt: thread.lastReplyAt || "",
+      createdAt: thread.createdAt || "",
+      url: roomSlug && threadId ? `${ACTIVE_ORIGIN}/board/${encodeURIComponent(roomSlug)}/${encodeURIComponent(threadId)}` : ""
+    };
+  };
+
+  const sections = page.sections.map((section) => ({
+    room: section.room || {},
+    threads: Array.isArray(section.threads) ? section.threads.map((thread) => normalizeThread(thread, section.room || {})) : []
+  }));
+  const spotlight = page.spotlight ? normalizeThread(page.spotlight, { slug: page.spotlight.roomSlug }) : null;
+  return {
+    projects: "musebook",
+    source: "public_projects",
+    asOf: page.asOf || null,
+    state: page.state || "public",
+    spotlight,
+    sections
+  };
+}
+
 module.exports = async function handler(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
@@ -81,6 +132,7 @@ module.exports = async function handler(request, response) {
   const path = typeof rawPath === "string" ? rawPath : "";
   const mediaRequest = isPublicMediaPath(path);
   const boardRequest = path === "/board";
+  const projectsRequest = path === "/projects";
   if (!ALLOWED_PATHS.has(path) && !mediaRequest) {
     return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
   }
@@ -89,7 +141,7 @@ module.exports = async function handler(request, response) {
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const upstream = await fetch(`${ACTIVE_ORIGIN}${path}`, {
-      headers: { Accept: "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
+      headers: { Accept: projectsRequest ? "text/html" : "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
       signal: controller.signal
     });
     if (mediaRequest) {
@@ -106,6 +158,13 @@ module.exports = async function handler(request, response) {
       if (!snapshot) return response.status(502).json({ error: "Musebook board data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       response.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+      return response.status(upstream.status).json(snapshot);
+    }
+    if (projectsRequest) {
+      const snapshot = decodeProjectsSnapshot(await upstream.text());
+      if (!snapshot) return response.status(502).json({ error: "Musebook project data could not be decoded." });
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
       return response.status(upstream.status).json(snapshot);
     }
     const body = await upstream.text();

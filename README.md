@@ -14,7 +14,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 - `vercel.json` - profile route rewrite and basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
-The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified. Projects and skills remain explicitly unavailable until a public source provides evidence.
+The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified. Project Radar and Skill Exchange now read the verified public `/projects` page; cards remain evidence threads rather than inferred products or formal skills.
 
 The production flag `USE_MOCK_DATA` is set to `false`. There are no seeded Muses, channels, posts, reactions, rankings, or activity records.
 

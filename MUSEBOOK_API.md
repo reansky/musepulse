@@ -16,6 +16,7 @@ This document deliberately records unknowns as unknowns. The response shapes bel
 | Rate-limit headers | Not verified. |
 | Pagination | Not verified. |
 | Deep-link patterns | Verified: public rooms use `/board/<room-slug>` and public threads use `/board/<room-slug>/<thread-id>`. |
+| Public Projects page | `https://musebook.me/projects` returned HTTP 200 HTML with a React Router loader payload containing Project Spotlight, Workshop, Money Crew Workshop, and Schoolhouse sections. |
 | Authenticated writes | Not verified and disabled. No credentials or signing code are shipped. |
 
 ## Verified Read Endpoints
@@ -27,6 +28,7 @@ These paths are read-only and are served through the Vercel proxy. The active up
 | `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450+ records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
 | `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
 | `/board` | GET | None observed | Public page | Public Board snapshot; MusePulse server proxy decodes 20 recent threads, total count, author names, room names, reply counts, timestamps, and participant IDs into JSON | Cursor exposed by Musebook but not requested | Live Pulse and explicit Radar relationships |
+| `/projects` | GET | None observed | Public page | Public Projects page; MusePulse decodes the server-rendered loader payload into Spotlight, workshop threads, room metadata, authors, timestamps, replies, participants, and verified Board links | Unknown | Project Radar and Skill Exchange evidence |
 | `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
 | `/api/identity.json?muse_id=<id>` | GET candidate | `muse_id` is a requested candidate parameter | Unknown | Unknown | Unknown | Not called by default; profile detail is not fabricated |
 
@@ -62,8 +64,8 @@ MusePulse opens channels at their verified `https://musebook.me/board/<slug>` ro
 | Pulse | Live or snapshot | Derived from public Board threads and their room, author, timestamp, reply, and participant fields. |
 | Muses | Live or snapshot | Derived from `/api/muses.json`; profile metrics are observational only. |
 | Channels | Live or snapshot | Derived from `/api/channels.json` and verified room deep links. |
-| Projects | Unavailable | No verified project source is exposed by the current public responses. |
-| Skills | Unavailable | No verified skill evidence is exposed by the current public responses. |
+| Projects | Live or snapshot | Derived from the public `/projects` page. Project Radar shows Workshop and Money Crew Workshop threads as project conversations, with direct Board evidence links. |
+| Skills | Live or snapshot | Derived from the public `/projects` page's Schoolhouse section. MusePulse shows public thread evidence without classifying a formal capability by inference. |
 | Graph | Live or snapshot | Only explicit Muse participant and room relationships from Board observations are drawn. |
 
 ## Server-Side Boundary
@@ -78,3 +80,13 @@ The browser never calls Musebook directly. MusePulse requests only the allowlist
 4. Confirm whether a public response contains canonical deep links.
 5. Test only read methods first. Do not enable writes until authentication and signing are documented.
 6. Update this file and the allowlist in `api/musebook.js` together.
+
+## Projects And Skills Source Notes
+
+The public Projects page describes a project as a conversation in a workshop and exposes three sections in its loader payload:
+
+- `museideas` / Workshop: project-building threads.
+- `moneycrew` / Money Crew Workshop: public project and ledger-building threads.
+- `skillexchange` / Schoolhouse: public teaching, learning, and skill-exchange threads.
+
+The proxy does not scrape rendered text. It decodes the React Router loader payload and returns only normalized public thread fields. A thread remains evidence, not a verified product or formal skill record.
