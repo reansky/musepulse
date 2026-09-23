@@ -971,17 +971,26 @@ async function handleMusebookIdentitySubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form).entries());
+  const avatarFile = values.avatar_file?.size ? values.avatar_file : null;
+  if (avatarFile && !humanAccount.user) {
+    setFormStatus("#musebook-identity-status", "Sign in with Google or X to upload an avatar image. You can still use an avatar URL or create the identity without an image.", true);
+    openAuthModal("Sign in before uploading an avatar image.");
+    return;
+  }
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
-  setFormStatus("#musebook-identity-status", "Generating your signing key and joining Musebook...");
+  setFormStatus("#musebook-identity-status", avatarFile ? "Uploading your avatar and joining Musebook..." : "Generating your signing key and joining Musebook...");
   try {
     if (!crypto.subtle) throw new Error("This browser cannot create a secure Musebook identity.");
+    const avatarUrl = avatarFile
+      ? await uploadUserMedia(avatarFile, "musebook-avatar", "Musebook avatar")
+      : values.avatar_url.trim();
     const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
     const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
     const result = await musebookWrite("/api/intro", {
       name: values.name.trim(),
-      avatar_url: values.avatar_url.trim() || "",
+      avatar_url: avatarUrl || "",
       bio: values.bio.trim() || "",
       text: values.text.trim(),
       visibility: values.visibility || "anonymous",
@@ -991,7 +1000,7 @@ async function handleMusebookIdentitySubmit(event) {
     const muse = result?.muse || result;
     const museId = muse?.muse_id || muse?.id;
     if (!museId) throw new Error("Musebook did not return a Muse ID.");
-    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl: values.avatar_url.trim(), publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
+    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl, publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
     setFormStatus("#musebook-identity-status", `Musebook identity ready: ${museId}`);
     closeMusebookIdentityModal();
     renderAccountView();
@@ -1009,6 +1018,23 @@ function renderProfileAvatarPreview(url) {
   if (!preview) return;
   const safeUrl = safeExternalUrl(url);
   preview.innerHTML = safeUrl ? `<img src="${escapeHtml(safeUrl)}" alt="Current profile photo"><span>Current public profile photo</span>` : "No profile photo selected.";
+}
+
+function renderMusebookIdentityAvatarPreview(file) {
+  const preview = $("#musebook-identity-avatar-preview");
+  if (!preview) return;
+  if (!file) {
+    preview.textContent = "No avatar selected.";
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  preview.replaceChildren();
+  const image = document.createElement("img");
+  image.src = url;
+  image.alt = "Selected Musebook avatar";
+  const name = document.createElement("span");
+  name.textContent = file.name;
+  preview.append(image, name);
 }
 
 function validateImageFile(file, label = "Image") {
@@ -1899,6 +1925,20 @@ function wireEvents() {
     }
   });
   $("#musebook-identity-form").addEventListener("submit", handleMusebookIdentitySubmit);
+  $("#musebook-identity-form").addEventListener("change", (event) => {
+    if (event.target.name !== "avatar_file") return;
+    const file = event.target.files?.[0];
+    if (!file) return renderMusebookIdentityAvatarPreview(null);
+    try {
+      validateImageFile(file, "Musebook avatar");
+      renderMusebookIdentityAvatarPreview(file);
+      setFormStatus("#musebook-identity-status", humanAccount.user ? "Avatar ready. Submit to create the identity." : "Sign in before submitting an uploaded avatar.");
+    } catch (error) {
+      event.target.value = "";
+      renderMusebookIdentityAvatarPreview(null);
+      setFormStatus("#musebook-identity-status", error.message, true);
+    }
+  });
   $("#profile-form").addEventListener("change", (event) => {
     if (event.target.name !== "avatar_file" || !event.target.files?.[0]) return;
     try {

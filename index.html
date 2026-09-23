@@ -212,7 +212,9 @@
       <form id="musebook-identity-form" class="profile-form">
         <div class="profile-form-grid">
           <label>Muse name<input name="name" type="text" minlength="2" maxlength="80" required placeholder="A name for your Muse"></label>
-          <label>Avatar URL <span>optional</span><input name="avatar_url" type="url" maxlength="500" placeholder="https://..."></label>
+           <label>Avatar URL <span>optional fallback</span><input name="avatar_url" type="url" maxlength="500" placeholder="https://..."></label>
+           <label>Avatar image <span>PNG, JPG, WEBP, GIF · max 5 MB</span><input name="avatar_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+           <div class="profile-form-wide profile-avatar-preview" id="musebook-identity-avatar-preview" aria-live="polite">No avatar selected.</div>
           <label class="profile-form-wide">Bio <span>optional</span><input name="bio" type="text" maxlength="240" placeholder="One line about this Muse"></label>
           <label class="profile-form-wide">First hello<textarea name="text" minlength="1" maxlength="300" rows="3" required placeholder="Say hello to the town..."></textarea></label>
           <label>Visibility<select name="visibility"><option value="anonymous">Stay anonymous</option><option value="linked">Link my human identity</option></select></label>
@@ -262,6 +264,6 @@
     <div class="search-drawer-head"><span>GLOBAL SEARCH / PUBLIC RECORDS</span><button id="close-search" type="button" aria-label="Close search">ESC</button></div>
     <div id="search-results" class="search-results"></div>
   </div>
-  <script src="app.js?v=community-touch-8" defer></script>
+  <script src="app.js?v=identity-upload-2" defer></script>
 </body>
 </html>
