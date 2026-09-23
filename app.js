@@ -141,12 +141,14 @@ function normalizeActivity(item) {
   const time = firstValue(item.lastReplyAt, item.last_reply_at, item.created_at, item.createdAt, item.timestamp, item.time, "");
   const channelId = firstValue(item.channel_id, item.channelId, item.roomSlug, item.room_slug, "");
   const participantIds = relationIds(item, ["participantIds", "participant_ids"]);
+  const authorAvatar = item.author && typeof item.author === "object" ? firstValue(item.author.avatarUrl, item.author.avatar_url) : "";
   if (!title && !time) return null;
   return {
     id: String(firstValue(item.id, item.uuid, `${actor}-${time}-${title}`)),
     title: String(title || "Activity detected"),
     actor: String(actor),
     actorId: String(actorId || ""),
+    avatar: firstValue(item.avatar, item.avatar_url, item.author_avatar, item.author_avatar_url, authorAvatar, "") || "",
     participantIds,
     channelId: String(channelId || ""),
     channel: String(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface") || "Public surface"),
@@ -299,7 +301,7 @@ function renderPulse() {
   feed.innerHTML = state.activity.slice(0, 12).map((event) => `
     <article class="pulse-row">
       <time class="pulse-time">${escapeHtml(formatTime(event.time))}</time>
-      <div class="pulse-signal"><span class="pulse-glyph">↗</span><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
+      <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(event.avatar) ? `<img src="${escapeHtml(publicImageUrl(event.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
       <span class="pulse-context">${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span>
       <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View on Musebook ↗</a>
     </article>`).join("");
@@ -396,7 +398,18 @@ function renderRadar() {
     const target = points.find((point) => point.id === link.target.id);
     return source && target ? `<line class="graph-link" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"/>` : "";
   }).join("");
-  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records">${lines}<circle cx="${center.x}" cy="${center.y}" r="34" fill="rgba(107,231,230,.07)" stroke="rgba(107,231,230,.4)"/><text x="${center.x}" y="${center.y + 4}" fill="#6be7e6" font-family="DM Mono" font-size="10" text-anchor="middle">MUSEBOOK</text>${points.map((point) => `<g class="graph-node ${point.kind}"><circle cx="${point.x}" cy="${point.y}" r="${point.kind === "muse" ? 17 : 14}"/><text x="${point.x}" y="${point.y + 34}">${escapeHtml(point.name.slice(0, 16))}</text></g>`).join("")}</svg>`;
+  const clips = points.map((point, index) => {
+    const radius = point.kind === "muse" ? 19 : 22;
+    return `<clipPath id="radar-clip-${index}"><circle cx="${point.x}" cy="${point.y}" r="${radius - 2}"/></clipPath>`;
+  }).join("");
+  const pointMarkup = points.map((point, index) => {
+    const radius = point.kind === "muse" ? 19 : 22;
+    const image = publicImageUrl(point.kind === "muse" ? point.avatar : point.image);
+    const label = point.name.slice(0, 15);
+    const labelWidth = Math.max(52, label.length * 6.1 + 14);
+    return `<g class="graph-node ${point.kind}"><circle cx="${point.x}" cy="${point.y}" r="${radius + 3}" class="graph-node-halo"/>${image ? `<image href="${escapeHtml(image)}" x="${point.x - radius + 2}" y="${point.y - radius + 2}" width="${(radius - 2) * 2}" height="${(radius - 2) * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#radar-clip-${index})"/>` : `<text x="${point.x}" y="${point.y + 5}" class="graph-initial">${escapeHtml(Array.from(point.name.trim())[0]?.toUpperCase() || "M")}</text>`}<circle cx="${point.x}" cy="${point.y}" r="${radius}" class="graph-node-ring"/><rect x="${point.x - labelWidth / 2}" y="${point.y + radius + 8}" width="${labelWidth}" height="18" rx="9" class="graph-label-bg"/><text x="${point.x}" y="${point.y + radius + 20}" class="graph-label">${escapeHtml(label)}</text></g>`;
+  }).join("");
+  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records"><defs>${clips}</defs>${lines}<circle cx="${center.x}" cy="${center.y}" r="42" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="32" class="graph-core"/><text x="${center.x}" y="${center.y + 4}" class="graph-core-label">MUSEBOOK</text>${pointMarkup}</svg>`;
   $("#radar-count").textContent = `${links.length} observable link${links.length === 1 ? "" : "s"}`;
 }
 

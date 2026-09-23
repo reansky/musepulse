@@ -156,9 +156,14 @@ h2 { margin: 10px 0 0; color: var(--ink); font-size: clamp(30px, 4vw, 48px); lin
 .data-badge.ready { border-color: #9ed1b3; color: #41946b; }
 .data-badge.partial { border-color: #e9c38e; color: #b8752d; }
 .pulse-feed { display: grid; border-top: 1px solid var(--line); }
+.pulse-directory-viewport { max-height: 590px; padding: 0 8px 0 2px; }
+.pulse-directory-viewport .pulse-feed { padding: 0 6px 0 4px; }
 .pulse-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 150px 160px; align-items: center; gap: 22px; min-height: 90px; border-bottom: 1px solid var(--line); }
 .pulse-time { color: var(--muted); font: 10px var(--mono); }
 .pulse-signal { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pulse-avatar { position: relative; display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; overflow: hidden; border: 1px solid #c8d5f3; border-radius: 12px; background: linear-gradient(145deg, #edf1ff, #c2d0ff); color: var(--purple-deep); font: 15px var(--mono); }
+.pulse-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pulse-avatar.no-image img { display: none; }
 .pulse-glyph { display: grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--purple); font: 12px var(--mono); }
 .pulse-signal strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 14px; font-weight: 600; }
 .pulse-signal small, .pulse-context { color: var(--muted); font-size: 11px; }
@@ -235,12 +240,20 @@ select:focus { border-color: var(--purple); }
 
 .radar-panel { position: relative; min-height: 430px; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(135deg, #f7f9ff, #edf4ff); box-shadow: 0 14px 28px rgba(106, 130, 192, .08); }
 .network-graph { position: absolute; inset: 0; padding: 30px; }
-.network-graph svg { width: 100%; height: 100%; }
-.graph-link { stroke: rgba(96, 117, 255, .42); stroke-width: 1; stroke-dasharray: 4 7; }
-.graph-node circle { fill: rgba(255, 255, 255, .8); stroke-width: 1; }
-.graph-node.muse circle { stroke: var(--purple); }
-.graph-node.channel circle { stroke: #73a6ea; }
-.graph-node text { fill: var(--ink-soft); font: 10px var(--mono); text-anchor: middle; }
+.network-graph svg { width: 100%; height: 100%; overflow: visible; }
+.graph-link { stroke: rgba(96, 117, 255, .34); stroke-width: 1.2; stroke-dasharray: 4 7; }
+.graph-node-halo { fill: rgba(255, 255, 255, .8); stroke-width: 1; opacity: .9; }
+.graph-node.muse .graph-node-halo { stroke: rgba(96, 117, 255, .28); }
+.graph-node.channel .graph-node-halo { stroke: rgba(115, 166, 234, .35); }
+.graph-node-ring { fill: none; stroke-width: 1.5; }
+.graph-node.muse .graph-node-ring { stroke: var(--purple); }
+.graph-node.channel .graph-node-ring { stroke: #73a6ea; }
+.graph-initial { fill: var(--purple-deep); font: 13px var(--mono); text-anchor: middle; }
+.graph-label-bg { fill: rgba(255, 255, 255, .86); stroke: rgba(205, 216, 242, .9); }
+.graph-label { fill: var(--ink-soft); font: 9px var(--mono); text-anchor: middle; }
+.graph-core-halo { fill: rgba(107, 231, 230, .08); stroke: rgba(107, 231, 230, .22); stroke-width: 1; }
+.graph-core { fill: rgba(107, 231, 230, .1); stroke: rgba(107, 231, 230, .72); stroke-width: 1.2; }
+.graph-core-label { fill: #4d9d9d; font: 9px var(--mono); text-anchor: middle; }
 .radar-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 30px; text-align: center; }
 .radar-empty.hidden { display: none; }
 .radar-empty-glyph { color: var(--purple); font: 42px var(--mono); line-height: 1; opacity: .65; }
@@ -345,6 +358,9 @@ select:focus { border-color: var(--purple); }
   .pulse-signal { grid-column: 1; }
   .pulse-context { grid-column: 1; padding-left: 42px; }
   .pulse-link { grid-column: 2; grid-row: 2 / span 2; }
+  .pulse-directory-viewport { max-height: 520px; padding-right: 5px; border-radius: 16px; }
+  .pulse-directory-viewport .pulse-feed { padding-inline: 3px; }
+  .pulse-avatar { width: 36px; height: 36px; border-radius: 11px; }
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
   .channel-grid { grid-template-columns: 1fr; }
   .muse-card { min-height: 150px; padding: 12px; }

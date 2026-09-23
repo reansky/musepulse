@@ -61,6 +61,7 @@ function decodeBoardSnapshot(html) {
       return {
         ...thread,
         author_name: author.name || thread.authorId || "Public Muse",
+        author_avatar: author.avatarUrl || author.avatar_url || "",
         channel_name: room.name || thread.roomSlug || "Public board",
         channel_id: thread.roomSlug || "",
         url: thread.roomSlug && thread.id ? `${ACTIVE_ORIGIN}/board/${encodeURIComponent(thread.roomSlug)}/${encodeURIComponent(thread.id)}` : ""
