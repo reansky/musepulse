@@ -52,7 +52,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; opacity: .28; }
 .orb-a { width: 27rem; height: 27rem; right: -13rem; top: 7rem; background: #c9d9ff; }
 .orb-b { width: 22rem; height: 22rem; left: -13rem; top: 60rem; background: #f0ddff; }
-.app-shell { position: relative; z-index: 1; overflow: hidden; }
+.app-shell { position: relative; z-index: 1; overflow: visible; }
 .section-wrap { width: min(1160px, calc(100% - 40px)); margin-inline: auto; }
 
 .topbar { display: flex; align-items: center; gap: 31px; min-height: 82px; width: min(1280px, calc(100% - 40px)); margin: 0 auto; border-bottom: 1px solid rgba(199, 211, 241, .54); }
