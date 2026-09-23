@@ -696,6 +696,10 @@ function openAuthModal(message = "") {
   ensureHumanAuth();
 }
 
+function authRedirectUrl() {
+  return new URL("/workspace", window.location.origin).href;
+}
+
 function closeAuthModal() {
   $("#auth-modal").hidden = true;
 }
@@ -1730,7 +1734,7 @@ function wireEvents() {
       const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
       setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
-        const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/#workspace` } });
+        const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirectUrl() } });
         if (error) throw error;
       }).catch((error) => {
         const providerName = provider === "google" ? "Google" : "X";
@@ -1822,6 +1826,13 @@ function routeFromLocation() {
     return;
   }
   $("#profile-view").hidden = true;
+  if (window.location.pathname === "/workspace") {
+    state.accountRoute = "workspace";
+    setActiveView("account");
+    ensureHumanAuth();
+    renderAccountView();
+    return;
+  }
   const hash = window.location.hash.replace(/^#/, "").toLowerCase();
   if (ACCOUNT_ROUTES.has(hash)) {
     state.accountRoute = hash;
