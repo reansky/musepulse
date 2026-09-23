@@ -511,8 +511,14 @@ function renderIntelligence() {
   skillList.innerHTML = state.skills.length ? state.skills.slice(0, 6).map((record) => evidenceCard(record, "skill")).join("") : intelligenceFallback("skill");
   const projectStatus = $("#project-status");
   const skillStatus = $("#skill-status");
-  if (projectStatus) projectStatus.textContent = `${sourceBadge("projects", state.projects.length)} · ${state.projects.length} EVIDENCE`;
-  if (skillStatus) skillStatus.textContent = `${sourceBadge("projects", state.skills.length)} · ${state.skills.length} EVIDENCE`;
+  const updateBadge = (element, count) => {
+    if (!element) return;
+    const status = state.endpointStatus.projects;
+    element.textContent = `${sourceBadge("projects", count)} · ${count} EVIDENCE`;
+    element.className = `data-badge${status === "ready" ? " ready" : status === "error" ? " error" : " partial"}`;
+  };
+  updateBadge(projectStatus, state.projects.length);
+  updateBadge(skillStatus, state.skills.length);
 }
 
 function renderRadar() {
