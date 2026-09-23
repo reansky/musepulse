@@ -95,7 +95,7 @@ function normalizeChannel(item) {
     name: String(name),
     description: String(firstValue(item.description, item.about, item.topic, "") || ""),
     url: firstValue(item.url, item.href, item.link, "") || "",
-    activityCount: firstValue(item.activity_count, item.activityCount, item.posts_count, "") || "",
+    activityCount: firstValue(item.activity_count, item.activityCount, item.posts_count, item.post_count, "") || "",
     relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "muse_ids", "museIds", "member_ids", "memberIds", "members"]),
     raw: item
   };
@@ -161,7 +161,7 @@ async function requestPublic(path) {
 
 function musebookUrl(record = {}) {
   const candidate = firstValue(record.url, record.href, record.link, "");
-  if (candidate && /^https:\/\/(www\.)?musebook\.lol(?:\/|$)/i.test(candidate)) return candidate;
+  if (candidate && /^https:\/\/(www\.)?musebook\.(?:lol|world|me)(?:\/|$)/i.test(candidate)) return candidate;
   return CONFIG.MUSEBOOK_ORIGIN;
 }
 

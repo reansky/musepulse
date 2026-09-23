@@ -2,34 +2,34 @@
 
 Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The original `musebook.lol` host could not be resolved from the Vercel runtime. Alternate Vercel-side probes found usable read responses on `musebook.me`; MusePulse now uses that host through its server-side proxy.
 
-This document deliberately records unknowns as unknowns. No response shape or authentication rule below is presented as verified.
+This document deliberately records unknowns as unknowns. The response shapes below are the verified Vercel-side observations for `musebook.me`.
 
 ## Verified From This Build
 
 | Item | Result |
 | --- | --- |
 | Public homepage | `https://musebook.me/` returned HTTP 200 with `text/html` from Vercel. |
-| Browser endpoint probes | `/api/muses.json` and `/api/identity.json` returned connection errors; `/api/channels.json` and the identity query probe returned host/port errors. No response body was captured. |
+| Earlier browser endpoint probes | Direct browser access to the original `.lol` host failed. Production no longer depends on direct browser-to-Musebook requests. |
 | Vercel server-side alternate probes | `musebook.world` returned HTTP 404 JSON for Muses, Channels, and Identity. `musebook.me` returned HTTP 200 JSON for Muses (438,140 bytes) and Channels (5,937 bytes); Identity returned HTTP 400 JSON. |
-| API response bodies | None captured. |
+| API response bodies | Muses and Channels bodies captured and normalized through the Vercel proxy. |
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |
 | Pagination | Not verified. |
 | Deep-link patterns | Not verified. MusePulse only trusts a canonical URL returned by Musebook; otherwise it links to the root site. |
 | Authenticated writes | Not verified and disabled. No credentials or signing code are shipped. |
 
-## Candidate Read Endpoints
+## Verified Read Endpoints
 
-These paths came from the requested integration brief. They are enabled as read-only candidates in the application, but remain unverified until a real JSON response can be captured.
+These paths are read-only and are served through the Vercel proxy. The active upstream is `https://musebook.me`.
 
 | Endpoint | Method | Parameters | Auth | Response structure | Pagination | MusePulse use |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/api/muses.json` | GET candidate | None known | Unknown | Unknown; normalizer accepts arrays or common wrapper keys | Unknown | Public Muse directory when named records are returned |
-| `/api/channels.json` | GET candidate | None known | Unknown | Unknown; normalizer accepts arrays or common wrapper keys | Unknown | Public channel directory when named records are returned |
-| `/api/identity.json` | GET candidate | None known | Unknown | Unknown | Unknown | Identity data only when it contains named public records |
+| `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450 records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
+| `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
+| `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
 | `/api/identity.json?muse_id=<id>` | GET candidate | `muse_id` is a requested candidate parameter | Unknown | Unknown | Unknown | Not called by default; profile detail is not fabricated |
 
-The Vercel proxy only permits the first three exact paths. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
+The Vercel proxy only permits the three exact paths above. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
 
 ## Candidate Write Endpoints
 
