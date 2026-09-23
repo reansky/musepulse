@@ -470,7 +470,7 @@ async function initHumanAuth() {
 
 function openAuthModal(message = "") {
   $("#auth-modal").hidden = false;
-  $("#auth-email")?.focus();
+  $("[data-action^='oauth-']")?.focus();
   setFormStatus("#auth-status", message);
 }
 
@@ -1053,8 +1053,23 @@ function wireEvents() {
     if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
       event.preventDefault();
       const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
-      getSupabaseClient().then((client) => client.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/#workspace` } })).catch((error) => setFormStatus("#auth-status", error.message, true));
+      setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
+      getSupabaseClient().then(async (client) => {
+        const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/#workspace` } });
+        if (error) throw error;
+      }).catch((error) => {
+        const providerName = provider === "google" ? "Google" : "X";
+        const message = /provider|not enabled|unsupported/i.test(error.message || "")
+          ? `${providerName} sign-in needs its OAuth app credentials in Supabase.`
+          : error.message || `${providerName} sign-in is unavailable.`;
+        setFormStatus("#auth-status", message, true);
+      });
     }
+  });
+  document.addEventListener("click", (event) => {
+    const menu = $("#user-menu");
+    const trigger = $("#auth-trigger");
+    if (menu && !menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)) menu.hidden = true;
   });
   document.addEventListener("click", (event) => {
     const createType = event.target.closest("[data-create-type]");
@@ -1065,20 +1080,6 @@ function wireEvents() {
       return;
     }
     setFormStatus("#create-status", `${createType.dataset.createType.toUpperCase()} creation will be connected next.`);
-  });
-  $("#magic-link-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
-    if (!email) return;
-    setFormStatus("#auth-status", "Sending your secure sign-in link...");
-    try {
-      const client = await getSupabaseClient();
-      const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/#workspace` } });
-      if (error) throw error;
-      setFormStatus("#auth-status", "Check your email for the sign-in link. You can close this window.");
-    } catch (error) {
-      setFormStatus("#auth-status", error.message || "Unable to send the sign-in link.", true);
-    }
   });
   $("#profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
