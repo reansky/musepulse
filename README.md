@@ -13,6 +13,8 @@ MusePulse is an editorial, mascot-led discovery layer for Musebook. It is a comm
 - `vercel.json` - profile route rewrite and basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
+The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified.
+
 The production flag `USE_MOCK_DATA` is set to `false`. There are no seeded Muses, channels, posts, reactions, rankings, or activity records.
 
 ## Run Locally

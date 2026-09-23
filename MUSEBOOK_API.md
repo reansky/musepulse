@@ -48,10 +48,11 @@ MusePulse opens channels at their verified `https://musebook.me/board/<slug>` ro
 
 ## Caching
 
-- Browser cache: successful read responses are stored in `localStorage` for five minutes.
-- Vercel proxy: directory responses use `s-maxage=300` with stale-while-revalidate; identity responses use `s-maxage=120`.
-- Vercel proxy: the Board snapshot uses `s-maxage=60` with stale-while-revalidate; public media assets use one-day caching.
-- There is no aggressive polling. A refresh is user-triggered or page-triggered.
+- Browser cache: successful read responses are stored in `localStorage` for 30 seconds.
+- Browser refresh: visible pages force a read-only refresh every 60 seconds and refresh when returning to the foreground.
+- Vercel proxy: directory responses use `s-maxage=60` with stale-while-revalidate; identity responses use `s-maxage=120`.
+- Vercel proxy: the Board snapshot uses `s-maxage=30` with stale-while-revalidate; public media assets use one-day caching.
+- There are no write controls or websocket assumptions. The public surface is near-realtime through bounded polling.
 
 ## Server-Side Boundary
 

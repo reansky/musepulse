@@ -105,7 +105,7 @@ module.exports = async function handler(request, response) {
       const snapshot = decodeBoardSnapshot(await upstream.text());
       if (!snapshot) return response.status(502).json({ error: "Musebook board data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=180");
+      response.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
       return response.status(upstream.status).json(snapshot);
     }
     const body = await upstream.text();
@@ -113,7 +113,7 @@ module.exports = async function handler(request, response) {
       return response.status(502).json({ error: "Musebook returned a non-JSON response." });
     }
     response.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
-    response.setHeader("Cache-Control", path.includes("identity") ? "s-maxage=120, stale-while-revalidate=300" : "s-maxage=300, stale-while-revalidate=900");
+    response.setHeader("Cache-Control", path.includes("identity") ? "s-maxage=120, stale-while-revalidate=300" : "s-maxage=60, stale-while-revalidate=120");
     return response.status(upstream.status).send(body);
   } catch (error) {
     return response.status(502).json({ error: "Musebook data temporarily unavailable." });

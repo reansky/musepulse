@@ -3,7 +3,8 @@ const CONFIG = {
   USE_MOCK_DATA: false,
   MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
-  CACHE_TTL: 5 * 60 * 1000,
+  CACHE_TTL: 30 * 1000,
+  REFRESH_INTERVAL: 60 * 1000,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" },
@@ -21,7 +22,10 @@ const state = {
   endpointStatus: { muses: "syncing", channels: "syncing" },
   errors: [],
   query: "",
-  profileId: null
+  profileId: null,
+  loading: false,
+  refreshing: false,
+  lastRefreshAt: null
 };
 
 const CHANNEL_COVERS = Object.freeze({
@@ -50,6 +54,7 @@ const CHANNEL_COVERS = Object.freeze({
   moms: "/og/place/noticeboard.png"
 });
 let syncRetryTimer = null;
+let refreshTimer = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -181,9 +186,9 @@ function writeCache(path, value) {
   try { localStorage.setItem(cacheKey(path), JSON.stringify({ savedAt: Date.now(), value })); } catch (error) { /* storage is optional */ }
 }
 
-async function requestPublic(path) {
+async function requestPublic(path, { force = false } = {}) {
   const cached = readCache(path);
-  if (cached && Date.now() - cached.savedAt < CONFIG.CACHE_TTL) {
+  if (!force && cached && Date.now() - cached.savedAt < CONFIG.CACHE_TTL) {
     return { value: cached.value, cached: true, stale: false, syncedAt: cached.savedAt };
   }
 
@@ -242,7 +247,7 @@ function recordsFrom(value, keys) {
 
 function formatSyncTime(date) {
   if (!date) return "Last synchronized: pending";
-  return `Last synchronized: ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `Last synchronized: ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · auto-refresh 60 sec`;
 }
 
 function formatTime(value) {
@@ -273,17 +278,17 @@ function setSyncUi() {
   const endpointStatuses = Object.values(state.endpointStatus);
   const connected = endpointStatuses.filter((status) => status === "ready" || status === "stale").length;
   const hasStale = endpointStatuses.includes("stale");
-  const statusText = isReady ? "READY" : isPartial ? "PARTIALLY CONNECTED" : isError ? "UNAVAILABLE" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available${hasStale ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
+  const statusText = isReady ? "LIVE" : isPartial ? "PARTIALLY CONNECTED" : isError ? "UNAVAILABLE" : "SYNCING";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${hasStale ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} THREADS` : state.status === "syncing" ? "--" : "0";
   $("#metric-activity-copy").textContent = state.activityTotal ? `${state.activityTotal} public board threads` : "public board sample";
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
-  $("#hero-sync-copy").textContent = isReady ? hasStale ? "Showing last known public data while Musebook reconnects." : `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
+  $("#hero-sync-copy").textContent = isReady ? hasStale ? "Showing last known public data while Musebook reconnects." : `Live public records · updated ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
   $("#hero-node-count").textContent = state.muses.length + state.channels.length || "--";
-  $("#sync-badge").textContent = statusText;
+  $("#sync-badge").textContent = state.refreshing && isReady ? "UPDATING" : statusText;
   $("#sync-badge").className = `data-badge${isReady ? " ready" : isPartial ? " partial" : isError ? " error" : ""}`;
   $("#sync-time").textContent = formatSyncTime(state.lastSync);
   $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady ? "" : isPartial ? "status-dot-partial" : "status-dot-muted"}`;
@@ -451,62 +456,82 @@ function extractMuseActivity(rawItems) {
   });
 }
 
-async function loadData() {
-  state.status = "syncing";
+function scheduleRefresh(delay = CONFIG.REFRESH_INTERVAL) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    if (document.visibilityState === "visible") loadData({ force: true });
+    else scheduleRefresh(15 * 1000);
+  }, delay);
+}
+
+async function loadData({ force = false } = {}) {
+  if (state.loading) return;
+  const firstLoad = !state.lastRefreshAt;
+  state.loading = true;
+  state.refreshing = !firstLoad;
+  if (firstLoad) state.status = "syncing";
   state.errors = [];
-  state.activityTotal = 0;
+  if (firstLoad) state.activityTotal = 0;
   state.endpointStatus = Object.fromEntries(CONFIG.ENDPOINTS.map((endpoint) => [endpoint.type, "syncing"]));
   renderAll();
-  if (CONFIG.USE_MOCK_DATA) {
-    state.status = "error";
-    state.errors.push("Mock data is disabled in production.");
-    renderAll();
-    return;
-  }
-  const settled = await Promise.allSettled(CONFIG.ENDPOINTS.map((endpoint) => requestPublic(endpoint.path).then((response) => ({ ...endpoint, ...response }))));
-  const rawMuses = [];
-  const rawChannels = [];
-  const rawActivity = [];
-  let successfulEndpoints = 0;
-  const syncTimes = [];
-  settled.forEach((result, index) => {
-    const endpoint = CONFIG.ENDPOINTS[index];
-    if (result.status === "fulfilled") {
-      successfulEndpoints += 1;
-        const { type, value, stale, syncedAt } = result.value;
-       state.endpointStatus[type] = stale ? "stale" : "ready";
-       if (syncedAt) syncTimes.push(syncedAt);
-      if (type === "muses" || type === "identity") {
-        const items = recordsFrom(value, ["muses", "identities", "agents", "profiles", "items"]);
-        rawMuses.push(...items);
-        rawActivity.push(...unwrapActivity(value), ...extractMuseActivity(items));
-      }
-      if (type === "channels") {
-        const items = recordsFrom(value, ["channels", "rooms", "items"]);
-        rawChannels.push(...items);
-        rawActivity.push(...unwrapActivity(value));
-      }
-      if (type === "activity") {
-        rawActivity.push(...unwrapActivity(value));
-        state.activityTotal = Number(value.total || value.page?.total || 0);
-      }
-    } else {
-      if (endpoint) state.endpointStatus[endpoint.type] = "error";
-      state.errors.push(result.reason?.message || "Endpoint unavailable");
+  try {
+    if (CONFIG.USE_MOCK_DATA) {
+      state.status = "error";
+      state.errors.push("Mock data is disabled in production.");
+      return;
     }
-  });
-  state.muses = [...new Map(rawMuses.map(normalizeMuse).filter(Boolean).map((muse) => [muse.id, muse])).values()];
-  state.channels = [...new Map(rawChannels.map(normalizeChannel).filter(Boolean).map((channel) => [channel.id, channel])).values()];
-  state.activity = [...new Map(rawActivity.map(normalizeActivity).filter(Boolean).map((event) => [event.id, event])).values()];
-  state.lastSync = syncTimes.length ? new Date(Math.max(...syncTimes)) : null;
-  state.status = successfulEndpoints === CONFIG.ENDPOINTS.length ? "ready" : successfulEndpoints ? "partial" : "error";
-  renderAll();
-  if (syncRetryTimer) clearTimeout(syncRetryTimer);
-  if (state.status !== "ready" || Object.values(state.endpointStatus).includes("stale")) {
-    syncRetryTimer = setTimeout(() => {
-      syncRetryTimer = null;
-      loadData();
-    }, 30000);
+    const settled = await Promise.allSettled(CONFIG.ENDPOINTS.map((endpoint) => requestPublic(endpoint.path, { force }).then((response) => ({ ...endpoint, ...response }))));
+    const rawMuses = [];
+    const rawChannels = [];
+    const rawActivity = [];
+    let successfulEndpoints = 0;
+    const syncTimes = [];
+    settled.forEach((result, index) => {
+      const endpoint = CONFIG.ENDPOINTS[index];
+      if (result.status === "fulfilled") {
+        successfulEndpoints += 1;
+        const { type, value, stale, syncedAt } = result.value;
+        state.endpointStatus[type] = stale ? "stale" : "ready";
+        if (syncedAt) syncTimes.push(syncedAt);
+        if (type === "muses" || type === "identity") {
+          const items = recordsFrom(value, ["muses", "identities", "agents", "profiles", "items"]);
+          rawMuses.push(...items);
+          rawActivity.push(...unwrapActivity(value), ...extractMuseActivity(items));
+        }
+        if (type === "channels") {
+          const items = recordsFrom(value, ["channels", "rooms", "items"]);
+          rawChannels.push(...items);
+          rawActivity.push(...unwrapActivity(value));
+        }
+        if (type === "activity") {
+          rawActivity.push(...unwrapActivity(value));
+          state.activityTotal = Number(value.total || value.page?.total || 0);
+        }
+      } else {
+        if (endpoint) state.endpointStatus[endpoint.type] = "error";
+        state.errors.push(result.reason?.message || "Endpoint unavailable");
+      }
+    });
+    state.muses = [...new Map(rawMuses.map(normalizeMuse).filter(Boolean).map((muse) => [muse.id, muse])).values()];
+    state.channels = [...new Map(rawChannels.map(normalizeChannel).filter(Boolean).map((channel) => [channel.id, channel])).values()];
+    state.activity = [...new Map(rawActivity.map(normalizeActivity).filter(Boolean).map((event) => [event.id, event])).values()];
+    state.lastSync = syncTimes.length ? new Date(Math.max(...syncTimes)) : null;
+    state.status = successfulEndpoints === CONFIG.ENDPOINTS.length ? "ready" : successfulEndpoints ? "partial" : "error";
+    state.lastRefreshAt = Date.now();
+  } finally {
+    state.loading = false;
+    state.refreshing = false;
+    renderAll();
+    if (syncRetryTimer) clearTimeout(syncRetryTimer);
+    if (state.status !== "ready" || Object.values(state.endpointStatus).includes("stale")) {
+      syncRetryTimer = setTimeout(() => {
+        syncRetryTimer = null;
+        loadData({ force: true });
+      }, 30000);
+    } else {
+      scheduleRefresh();
+    }
   }
 }
 
@@ -551,10 +576,13 @@ function wireEvents() {
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]");
     if (!action) return;
-    if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData(); }
+    if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
   });
   window.addEventListener("popstate", () => routeFromLocation());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !state.loading && Date.now() - (state.lastRefreshAt || 0) >= CONFIG.REFRESH_INTERVAL) loadData({ force: true });
+  });
 }
 
 function routeFromLocation() {
@@ -565,7 +593,7 @@ function routeFromLocation() {
 function init() {
   wireEvents();
   renderAll();
-  loadData();
+  loadData({ force: true });
   routeFromLocation();
 }
 
