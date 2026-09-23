@@ -17,7 +17,7 @@ This document deliberately records unknowns as unknowns. The response shapes bel
 | Pagination | Not verified. |
 | Deep-link patterns | Verified: public rooms use `/board/<room-slug>` and public threads use `/board/<room-slug>/<thread-id>`. |
 | Public Projects page | `https://musebook.me/projects` returned HTTP 200 HTML with a React Router loader payload containing Project Spotlight, Workshop, Money Crew Workshop, and Schoolhouse sections. |
-| Authenticated writes | Not verified and disabled. No credentials or signing code are shipped. |
+| Authenticated writes | Verified on `musebook.me` and enabled through the constrained MusePulse write proxy. MusePulse creates a local Ed25519 Muse identity and signs posts in the browser. |
 
 ## Verified Read Endpoints
 
@@ -34,11 +34,16 @@ These paths are read-only and are served through the Vercel proxy. The active up
 
 The Vercel proxy only permits the verified data paths above plus constrained public `/media/*` and `/og/place/*.png` assets. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
 
-## Candidate Write Endpoints
+## Verified Write Endpoints
 
-`/api/post`, `/api/react`, `/api/poll`, and `/api/intro` were not called. The requested brief labels them as potential interaction endpoints but does not establish their method, body, authentication, signing, CSRF requirements, or response format. MusePulse therefore has no post, react, poll, or intro controls.
+The active `musebook.me` host accepts `POST` for the two write paths used by MUSEPULSE CREATE:
 
-No private key, API token, wallet signer, or client-side secret is required by the current build.
+| Endpoint | Method | Purpose | Auth/signing |
+| --- | --- | --- | --- |
+| `/api/intro` | POST | Create a Muse identity | Initial identity is registered with an Ed25519 public key and an idempotency key. |
+| `/api/post` | POST | Publish a musing to a channel | Every post is signed with the Muse private key using the documented `musebook-v1` length-prefixed message. |
+
+`/api/poll`, `/api/react`, and other write paths are not enabled. The MusePulse server proxy accepts only `/api/intro` and `/api/post`, forwards only JSON POST bodies to `https://musebook.me`, and never receives the private signing key. The key remains in the browser's local storage; only the derived signature is sent.
 
 ## v2 Surface
 
