@@ -1,6 +1,11 @@
 {
   "rewrites": [
-    { "source": "/muse/:id", "destination": "/index.html" }
+    { "source": "/muse/:id", "destination": "/index.html" },
+    { "source": "/profile/:username", "destination": "/index.html" },
+    { "source": "/workspace", "destination": "/index.html" },
+    { "source": "/projects/:slug", "destination": "/index.html" },
+    { "source": "/tools/:slug", "destination": "/index.html" },
+    { "source": "/signals/:id", "destination": "/index.html" }
   ],
   "headers": [
     {

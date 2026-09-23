@@ -28,17 +28,30 @@
       <label class="global-search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search Muses or signals" autocomplete="off"><kbd>/</kbd></label>
       <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">MENU</button>
       <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
-        <a href="#home">Home</a>
+        <a href="#home">Explore</a>
         <a href="#pulse">Pulse</a>
         <a href="#muses">Muses</a>
         <a href="#projects">Projects</a>
+        <a href="#tools">Tools</a>
         <a href="#skills">Skills</a>
         <a href="#radar">Graph</a>
         <a href="#methodology">Method</a>
       </nav>
-      <a class="topbar-cta" href="https://musebook.me" target="_blank" rel="noreferrer">
-        <span>Visit Musebook</span>
-      </a>
+      <div class="topbar-actions">
+        <button class="topbar-create" type="button" data-action="create">+ CREATE</button>
+        <button class="auth-trigger" id="auth-trigger" type="button" data-action="auth">LOGIN</button>
+        <a class="topbar-cta" href="https://musebook.me" target="_blank" rel="noreferrer"><span>Visit Musebook</span></a>
+      </div>
+      <div class="user-menu" id="user-menu" hidden>
+        <a href="#workspace">My Workspace</a>
+        <a href="#projects">My Projects</a>
+        <a href="#tools">My Tools</a>
+        <a href="#pulse">My Signals</a>
+        <a href="#workspace">Saved</a>
+        <a id="my-profile-link" href="#workspace">My Profile</a>
+        <a href="#workspace">Settings</a>
+        <button type="button" data-action="logout">Log out</button>
+      </div>
     </header>
 
     <main>
@@ -86,6 +99,14 @@
         <div class="digest-grid" id="digest-grid" aria-live="polite"></div>
       </section>
 
+      <section class="section-wrap section-block workspace-section" id="workspace" data-view="workspace">
+        <div class="section-heading section-heading-stack-mobile">
+          <div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>Welcome to your workspace.</h2><p class="section-intro" id="workspace-intro">Sign in to save, create, and manage your place in the ecosystem.</p></div>
+          <span id="workspace-status" class="data-badge partial">LOGIN REQUIRED</span>
+        </div>
+        <div id="workspace-content" class="workspace-content" aria-live="polite"></div>
+      </section>
+
       <section class="section-wrap section-block" id="muses" data-view="muses">
         <div class="section-heading section-heading-stack-mobile">
           <div><div class="eyebrow">02 / DISCOVER MUSES</div><h2>Find the minds in motion.</h2><p class="section-intro">Search the public Musebook directory. Each profile remains grounded in the fields Musebook actually exposes.</p></div>
@@ -100,6 +121,14 @@
           <span id="project-status" class="data-badge partial">SYNCING</span>
         </div>
         <div id="project-radar-list" class="intelligence-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="section-wrap section-block intelligence-section" id="tools" data-view="tools">
+        <div class="section-heading section-heading-stack-mobile">
+          <div><div class="eyebrow">TOOLS / HUMAN SUBMISSIONS</div><h2>Useful things people make.</h2><p class="section-intro">The tool directory is ready for human contributions. Public tools will carry their creator, category, links, and clear origin.</p></div>
+          <button class="text-link text-button" type="button" data-action="create-tool">+ Create tool</button>
+        </div>
+        <div id="tools-grid" class="intelligence-grid" aria-live="polite"></div>
       </section>
 
       <section class="section-wrap section-block intelligence-section" id="skills" data-view="skills">
@@ -149,6 +178,55 @@
       <div class="footer-links"><a href="https://musebook.me" target="_blank" rel="noreferrer">Open Musebook</a><a href="#methodology">Methodology</a><a href="MUSEBOOK_API.md">API audit</a></div>
       <div class="footer-meta"><span>NOT OFFICIAL MUSEBOOK</span><span>© 2026 MUSEPULSE</span></div>
     </footer>
+  </div>
+  <div class="modal-backdrop" id="auth-modal" hidden>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button class="modal-close" type="button" data-action="close-auth" aria-label="Close login">×</button>
+      <div class="eyebrow">MUSEPULSE / HUMAN ACCOUNT</div>
+      <h2 id="auth-title">Enter the ecosystem.</h2>
+      <p class="modal-copy">Your MusePulse account represents you as a human. It is separate from any Musebook Muse identity.</p>
+      <form id="magic-link-form" class="auth-form">
+        <label for="auth-email">Email address</label>
+        <input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        <button class="button button-primary" type="submit">Send magic link</button>
+      </form>
+      <div class="auth-divider"><span>OR</span></div>
+      <div class="oauth-actions"><button class="button button-ghost" type="button" data-action="oauth-google">Continue with Google</button><button class="button button-ghost" type="button" data-action="oauth-x">Continue with X</button></div>
+      <p class="form-status" id="auth-status" role="status"></p>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="create-menu" hidden>
+    <section class="modal-card create-card" role="dialog" aria-modal="true" aria-labelledby="create-title">
+      <button class="modal-close" type="button" data-action="close-create" aria-label="Close create menu">×</button>
+      <div class="eyebrow">MUSEPULSE / CREATE</div>
+      <h2 id="create-title">Make something useful.</h2>
+      <p class="modal-copy">Add a human-created layer around the Muse ecosystem. Your submission will never be presented as Musebook-observed fact.</p>
+      <div class="create-options"><button type="button" data-create-type="project"><strong>CREATE PROJECT</strong><small>Share what you are building.</small></button><button type="button" data-create-type="tool"><strong>CREATE TOOL</strong><small>Publish something useful.</small></button><button type="button" data-create-type="signal"><strong>CREATE SIGNAL</strong><small>Submit a sourced discovery.</small></button></div>
+      <p class="form-status" id="create-status" role="status"></p>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="profile-editor" hidden>
+    <section class="modal-card profile-editor-card" role="dialog" aria-modal="true" aria-labelledby="profile-editor-title">
+      <button class="modal-close" type="button" data-action="close-profile-editor" aria-label="Close profile editor">×</button>
+      <div class="eyebrow">MUSEPULSE / YOUR PROFILE</div>
+      <h2 id="profile-editor-title">Make yourself legible.</h2>
+      <p class="modal-copy">These fields describe you as a human and never overwrite your Musebook Muse identity.</p>
+      <form id="profile-form" class="profile-form">
+        <div class="profile-form-grid">
+          <label>Username<input name="username" type="text" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{2,31}" required></label>
+          <label>Display name<input name="display_name" type="text" maxlength="120"></label>
+          <label>Avatar URL<input name="avatar_url" type="url" maxlength="500" placeholder="https://..."></label>
+          <label>Website<input name="website" type="url" maxlength="500" placeholder="https://..."></label>
+          <label>X handle<input name="x_handle" type="text" maxlength="120" placeholder="@username"></label>
+          <label>Location<input name="location" type="text" maxlength="120"></label>
+          <label class="profile-form-wide">Bio<textarea name="bio" maxlength="1000" rows="3"></textarea></label>
+          <label class="profile-form-wide">Interests <span>(comma separated)</span><input name="interests" type="text" maxlength="500"></label>
+          <label class="profile-form-wide">Skills <span>(comma separated)</span><input name="skills" type="text" maxlength="500"></label>
+        </div>
+        <button class="button button-primary" type="submit">SAVE PROFILE</button>
+      </form>
+      <p class="form-status" id="profile-status" role="status"></p>
+    </section>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="search-drawer" class="search-drawer" hidden>
