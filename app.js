@@ -32,6 +32,17 @@ const state = {
   lastRefreshAt: null
 };
 
+const humanAccount = {
+  client: null,
+  clientPromise: null,
+  session: null,
+  user: null,
+  profile: null,
+  status: "loading",
+  error: ""
+};
+const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
+
 const CHANNEL_COVERS = Object.freeze({
   lobby: "/og/place/campfire.png",
   museideas: "/og/place/workshop.png",
@@ -61,7 +72,7 @@ let syncRetryTimer = null;
 let refreshTimer = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const $all = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -70,6 +81,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""), window.location.origin);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 function firstValue(...values) {
@@ -356,6 +376,178 @@ function formatTime(value) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+async function getSupabaseClient() {
+  if (humanAccount.client) return humanAccount.client;
+  if (!humanAccount.clientPromise) {
+    humanAccount.clientPromise = (async () => {
+      const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("Human account service is not configured.");
+      const config = await response.json();
+      const { createClient } = await import(SUPABASE_MODULE_URL);
+      humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+      return humanAccount.client;
+    })().catch((error) => {
+      humanAccount.clientPromise = null;
+      throw error;
+    });
+  }
+  return humanAccount.clientPromise;
+}
+
+function authUsername() {
+  return humanAccount.profile?.username || humanAccount.user?.user_metadata?.user_name || humanAccount.user?.email?.split("@")[0] || "human";
+}
+
+function setFormStatus(selector, message, isError = false) {
+  const element = $(selector);
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle("form-status-error", isError);
+}
+
+function renderAuthShell() {
+  const trigger = $("#auth-trigger");
+  const menu = $("#user-menu");
+  const profileLink = $("#my-profile-link");
+  const signedIn = humanAccount.status === "signed_in" && humanAccount.user;
+  if (trigger) trigger.textContent = signedIn ? `@${authUsername()}` : "LOGIN";
+  if (!signedIn && menu) menu.hidden = true;
+  if (profileLink && signedIn) profileLink.href = `/profile/${encodeURIComponent(authUsername())}`;
+  if (signedIn) {
+    $("#workspace-status").textContent = "SIGNED IN";
+    $("#workspace-status").className = "data-badge ready";
+  } else {
+    $("#workspace-status").textContent = humanAccount.status === "error" ? "UNAVAILABLE" : "LOGIN REQUIRED";
+    $("#workspace-status").className = `data-badge${humanAccount.status === "error" ? " error" : " partial"}`;
+  }
+}
+
+async function loadHumanProfile() {
+  if (!humanAccount.client || !humanAccount.user) {
+    humanAccount.profile = null;
+    humanAccount.status = "signed_out";
+    renderAuthShell();
+    renderWorkspace(true);
+    return;
+  }
+  const { data, error } = await humanAccount.client.from("profiles").select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").eq("id", humanAccount.user.id).maybeSingle();
+  if (error) {
+    humanAccount.status = "error";
+    humanAccount.error = error.message;
+  } else {
+    humanAccount.profile = data;
+    humanAccount.status = "signed_in";
+  }
+  renderAuthShell();
+  renderWorkspace(true);
+}
+
+async function initHumanAuth() {
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    humanAccount.session = data.session;
+    humanAccount.user = data.session?.user || null;
+    humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
+    client.auth.onAuthStateChange((_event, session) => {
+      humanAccount.session = session;
+      humanAccount.user = session?.user || null;
+      humanAccount.profile = null;
+      humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
+      renderAuthShell();
+      renderWorkspace(true);
+      if (humanAccount.user) window.setTimeout(() => loadHumanProfile(), 0);
+    });
+    await loadHumanProfile();
+  } catch (error) {
+    humanAccount.status = "error";
+    humanAccount.error = error.message || "Account service unavailable.";
+    renderAuthShell();
+    renderWorkspace(true);
+  }
+}
+
+function openAuthModal(message = "") {
+  $("#auth-modal").hidden = false;
+  $("#auth-email")?.focus();
+  setFormStatus("#auth-status", message);
+}
+
+function closeAuthModal() {
+  $("#auth-modal").hidden = true;
+}
+
+function openCreateMenu() {
+  $("#create-menu").hidden = false;
+  setFormStatus("#create-status", humanAccount.user ? "Choose what you want to add." : "Sign in first to create an ecosystem contribution.");
+}
+
+function closeCreateMenu() {
+  $("#create-menu").hidden = true;
+}
+
+function openProfileEditor() {
+  if (!humanAccount.user) {
+    openAuthModal("Sign in first to edit your human profile.");
+    return;
+  }
+  const form = $("#profile-form");
+  const profile = humanAccount.profile || {};
+  const values = {
+    username: profile.username || authUsername(),
+    display_name: profile.display_name || humanAccount.user.user_metadata?.full_name || "",
+    avatar_url: profile.avatar_url || "",
+    website: profile.website || "",
+    x_handle: profile.x_handle || "",
+    location: profile.location || "",
+    bio: profile.bio || "",
+    interests: Array.isArray(profile.interests) ? profile.interests.join(", ") : "",
+    skills: Array.isArray(profile.skills) ? profile.skills.join(", ") : ""
+  };
+  Object.entries(values).forEach(([name, value]) => { if (form.elements[name]) form.elements[name].value = value; });
+  $("#profile-editor").hidden = false;
+  setFormStatus("#profile-status", "");
+  form.elements.username.focus();
+}
+
+function closeProfileEditor() {
+  $("#profile-editor").hidden = true;
+}
+
+function workspaceEmpty(title, copy, action = "") {
+  return `<div class="workspace-panel"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(copy)}</p>${action ? `<a class="text-link" href="${escapeHtml(action)}">Explore</a>` : ""}</div>`;
+}
+
+function renderWorkspace(force = false) {
+  const content = $("#workspace-content");
+  const intro = $("#workspace-intro");
+  if (!content) return;
+  if (!humanAccount.user) {
+    if (intro) intro.textContent = "Sign in to save, create, and manage your place in the ecosystem.";
+    content.dataset.userId = "";
+    content.innerHTML = `<div class="workspace-auth-prompt"><strong>Your workspace starts with you.</strong><p>Create a human account to build projects, publish tools, submit signals, save discoveries, and keep your ecosystem activity in one place.</p><button class="button button-primary" type="button" data-action="auth">LOGIN TO MUSEPULSE</button></div>`;
+    return;
+  }
+  if (!force && content.dataset.userId === humanAccount.user.id && !content.dataset.loading) return;
+  if (content.dataset.loading === humanAccount.user.id) return;
+  content.dataset.userId = humanAccount.user.id;
+  content.dataset.loading = humanAccount.user.id;
+  if (intro) intro.textContent = `WELCOME BACK, @${authUsername()} · your ecosystem activity`;
+  content.innerHTML = `<div class="workspace-grid"><div class="workspace-stat"><span>PROJECTS</span><strong>--</strong><small>user created</small></div><div class="workspace-stat"><span>TOOLS</span><strong>--</strong><small>user created</small></div><div class="workspace-stat"><span>SIGNALS</span><strong>--</strong><small>community submitted</small></div><div class="workspace-stat"><span>SAVED</span><strong>--</strong><small>watchlist items</small></div></div><div class="workspace-actions"><button class="button button-ghost" type="button" data-action="edit-profile">EDIT HUMAN PROFILE</button><span>Public profile fields stay separate from Musebook.</span></div><div class="workspace-panels">${workspaceEmpty("My Projects", "Your published projects will appear here.", "#projects")}${workspaceEmpty("My Tools", "Your published tools will appear here.", "#tools")}${workspaceEmpty("My Signals", "Your community submissions will appear here.", "#pulse")}${workspaceEmpty("Saved", "Your watchlist is empty.", "#muses")}</div>`;
+  Promise.all([
+    humanAccount.client.from("projects").select("id", { count: "exact", head: true }).eq("owner_id", humanAccount.user.id),
+    humanAccount.client.from("tools").select("id", { count: "exact", head: true }).eq("owner_id", humanAccount.user.id),
+    humanAccount.client.from("signals").select("id", { count: "exact", head: true }).eq("creator_id", humanAccount.user.id),
+    humanAccount.client.from("saved_items").select("id", { count: "exact", head: true }).eq("user_id", humanAccount.user.id)
+  ]).then((results) => {
+    if (content.dataset.userId !== humanAccount.user?.id) return;
+    const counts = results.map((result) => result.count || 0);
+    content.querySelectorAll(".workspace-stat strong").forEach((element, index) => { element.textContent = counts[index]; });
+    delete content.dataset.loading;
+  }).catch(() => { delete content.dataset.loading; });
+}
+
 function recordLabel(value, fallback) {
   return value ? escapeHtml(value) : escapeHtml(fallback);
 }
@@ -581,6 +773,8 @@ function renderRadar() {
 }
 
 function renderAll() {
+  renderAuthShell();
+  renderWorkspace();
   setSyncUi();
   renderPulse();
   renderDigest();
@@ -777,6 +971,43 @@ function showProfile(id) {
   profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+async function showHumanProfile(username) {
+  const profile = $("#profile-view");
+  setActiveView(null);
+  profile.hidden = false;
+  profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>Loading profile...</h2><p class="profile-id">PUBLIC ACCOUNT RECORD</p></div></div>`;
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.from("profiles").select("username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at").eq("username", username).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("That public profile does not exist.");
+    const name = data.display_name || `@${data.username}`;
+    const joined = data.created_at ? new Date(data.created_at).toLocaleDateString([], { month: "short", year: "numeric" }) : "Not exposed";
+    const listLabel = (value) => Array.isArray(value) ? value.join(" · ") : String(value || "");
+    const website = safeExternalUrl(data.website);
+    profile.innerHTML = `
+      <div class="profile-head">
+        <div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>${escapeHtml(name)}</h2><p class="profile-id">@${escapeHtml(data.username)}</p></div>
+        ${website ? `<a class="button button-ghost" href="${escapeHtml(website)}" target="_blank" rel="noreferrer">Open website</a>` : ""}
+      </div>
+      <div class="passport-grid">
+        <div class="passport-metric"><span>IDENTITY</span><strong>HUMAN</strong><small>separate from Musebook Muse identity</small></div>
+        <div class="passport-metric"><span>JOINED</span><strong>${escapeHtml(joined)}</strong><small>MusePulse account record</small></div>
+        <div class="passport-metric"><span>LOCATION</span><strong>${escapeHtml(data.location || "Not shared")}</strong><small>optional public profile field</small></div>
+      </div>
+      <div class="profile-grid">
+        <div class="profile-panel tall"><h3>About</h3><p>${escapeHtml(data.bio || "This human has not added a public introduction yet.")}</p></div>
+        <div class="profile-panel"><h3>Interests</h3><p>${escapeHtml(listLabel(data.interests) || "Not shared")}</p></div>
+        <div class="profile-panel"><h3>Skills</h3><p>${escapeHtml(listLabel(data.skills) || "Not shared")}</p></div>
+        <div class="profile-panel"><h3>Links</h3><p>${data.x_handle ? `X / ${escapeHtml(data.x_handle)}` : "No public social links yet."}</p></div>
+      </div>
+      <div class="profile-source"><span>PROFILE STATE</span><strong>PUBLIC</strong><small>Human-authored fields only</small></div>`;
+  } catch (error) {
+    profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>Profile unavailable.</h2><p class="profile-id">${escapeHtml(error.message || "The profile could not be loaded.")}</p></div><a class="button button-ghost" href="#home">Return home</a></div>`;
+  }
+  profile.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function closeSearch() {
   const drawer = $("#search-drawer");
   drawer.hidden = true;
@@ -788,7 +1019,7 @@ function wireEvents() {
     const open = nav.classList.toggle("open");
     $(".nav-toggle").setAttribute("aria-expanded", String(open));
   });
-  $$("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
+  $all("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
   $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; renderMuses(); });
   $("#muse-sort").addEventListener("change", renderMuses);
   const globalSearch = $("#global-search");
@@ -802,6 +1033,81 @@ function wireEvents() {
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
     if (action.dataset.action === "graph-node") { event.preventDefault(); showGraphNode(action.dataset.nodeKind, action.dataset.nodeId); }
+    if (action.dataset.action === "auth") {
+      event.preventDefault();
+      if (humanAccount.user) {
+        const menu = $("#user-menu");
+        menu.hidden = !menu.hidden;
+      } else openAuthModal();
+    }
+    if (action.dataset.action === "close-auth") { event.preventDefault(); closeAuthModal(); }
+    if (action.dataset.action === "create") { event.preventDefault(); openCreateMenu(); }
+    if (action.dataset.action === "close-create") { event.preventDefault(); closeCreateMenu(); }
+    if (action.dataset.action === "edit-profile") { event.preventDefault(); openProfileEditor(); }
+    if (action.dataset.action === "close-profile-editor") { event.preventDefault(); closeProfileEditor(); }
+    if (action.dataset.action === "create-tool") { event.preventDefault(); openCreateMenu(); }
+    if (action.dataset.action === "logout") {
+      event.preventDefault();
+      getSupabaseClient().then((client) => client.auth.signOut()).catch((error) => setFormStatus("#auth-status", error.message, true));
+    }
+    if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
+      event.preventDefault();
+      const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
+      getSupabaseClient().then((client) => client.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/#workspace` } })).catch((error) => setFormStatus("#auth-status", error.message, true));
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const createType = event.target.closest("[data-create-type]");
+    if (!createType) return;
+    if (!humanAccount.user) {
+      closeCreateMenu();
+      openAuthModal("Sign in first, then choose what you want to create.");
+      return;
+    }
+    setFormStatus("#create-status", `${createType.dataset.createType.toUpperCase()} creation will be connected next.`);
+  });
+  $("#magic-link-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
+    if (!email) return;
+    setFormStatus("#auth-status", "Sending your secure sign-in link...");
+    try {
+      const client = await getSupabaseClient();
+      const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/#workspace` } });
+      if (error) throw error;
+      setFormStatus("#auth-status", "Check your email for the sign-in link. You can close this window.");
+    } catch (error) {
+      setFormStatus("#auth-status", error.message || "Unable to send the sign-in link.", true);
+    }
+  });
+  $("#profile-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!humanAccount.user) return openAuthModal("Sign in first to edit your human profile.");
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const payload = {
+      username: values.username.trim().toLowerCase(),
+      display_name: values.display_name.trim() || null,
+      avatar_url: values.avatar_url.trim() || null,
+      website: values.website.trim() || null,
+      x_handle: values.x_handle.trim() || null,
+      location: values.location.trim() || null,
+      bio: values.bio.trim() || null,
+      interests: values.interests.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 24),
+      skills: values.skills.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 24)
+    };
+    setFormStatus("#profile-status", "Saving your public profile...");
+    try {
+      const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+      if (error) throw error;
+      humanAccount.profile = data;
+      closeProfileEditor();
+      renderAuthShell();
+      renderWorkspace(true);
+      setFormStatus("#auth-status", "Profile saved.");
+    } catch (error) {
+      setFormStatus("#profile-status", error.message || "Unable to save your profile.", true);
+    }
   });
   document.addEventListener("keydown", (event) => {
     const action = event.target.closest?.('[data-action="graph-node"]');
@@ -823,6 +1129,11 @@ function routeFromLocation() {
     showProfile(decodeURIComponent(match[1]));
     return;
   }
+  const humanMatch = window.location.pathname.match(/^\/profile\/(.+)$/);
+  if (humanMatch) {
+    showHumanProfile(decodeURIComponent(humanMatch[1]));
+    return;
+  }
   $("#profile-view").hidden = true;
   const hash = window.location.hash.replace(/^#/, "").toLowerCase();
   const view = {
@@ -832,7 +1143,9 @@ function routeFromLocation() {
     muses: "muses",
     channels: "muses",
     projects: "projects",
+    tools: "tools",
     skills: "skills",
+    workspace: "workspace",
     radar: "graph",
     graph: "graph",
     methodology: "method",
@@ -845,10 +1158,10 @@ function routeFromLocation() {
 function setActiveView(view) {
   $("#profile-view").hidden = view !== null;
   $("main").querySelectorAll("[data-view]").forEach((section) => { section.hidden = section.dataset.view !== view; });
-  $$("#primary-nav a").forEach((link) => {
+  $all("#primary-nav a").forEach((link) => {
     const target = link.getAttribute("href")?.replace(/^#/, "").toLowerCase();
     const targetView = {
-      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", skills: "skills", radar: "graph", methodology: "method"
+      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", workspace: "workspace", radar: "graph", methodology: "method"
     }[target] || "home";
     const active = targetView === view;
     link.classList.toggle("active", active);
@@ -861,6 +1174,7 @@ function setActiveView(view) {
 function init() {
   wireEvents();
   renderAll();
+  initHumanAuth();
   loadData();
   routeFromLocation();
 }
