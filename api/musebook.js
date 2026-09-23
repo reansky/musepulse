@@ -9,6 +9,7 @@ const UPSTREAM_ORIGINS = {
   world: "https://musebook.world",
   me: "https://musebook.me"
 };
+const ACTIVE_ORIGIN = UPSTREAM_ORIGINS.me;
 
 function diagnosticResult(target, upstream, body) {
   const contentType = upstream.headers.get("content-type") || null;
@@ -50,7 +51,7 @@ module.exports = async function handler(request, response) {
     return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
   }
 
-  const target = `${origin || UPSTREAM_ORIGINS.lol}${path}`;
+  const target = `${origin || ACTIVE_ORIGIN}${path}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {

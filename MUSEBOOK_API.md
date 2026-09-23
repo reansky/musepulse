@@ -1,6 +1,6 @@
 # Musebook API Audit
 
-Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The provisioned browser could not reach `musebook.lol` (`ERR_TUNNEL_CONNECTION_FAILED`; direct fetch attempts also returned connection/host errors), and direct DNS resolution from the build environment failed. Search indexing confirmed the public homepage exists, but did not provide a trustworthy API response body.
+Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The original `musebook.lol` host could not be resolved from the Vercel runtime. Alternate Vercel-side probes found usable read responses on `musebook.me`; MusePulse now uses that host through its server-side proxy.
 
 This document deliberately records unknowns as unknowns. No response shape or authentication rule below is presented as verified.
 
@@ -8,9 +8,9 @@ This document deliberately records unknowns as unknowns. No response shape or au
 
 | Item | Result |
 | --- | --- |
-| Public homepage | Search indexed `https://musebook.lol/`; direct browser navigation was unavailable in this audit environment. |
+| Public homepage | `https://musebook.me/` returned HTTP 200 with `text/html` from Vercel. |
 | Browser endpoint probes | `/api/muses.json` and `/api/identity.json` returned connection errors; `/api/channels.json` and the identity query probe returned host/port errors. No response body was captured. |
-| Vercel server-side endpoint probes | `/`, `/api/muses.json`, and `/api/channels.json` all failed before HTTP response with `ENOTFOUND` / `getaddrinfo ENOTFOUND musebook.lol`. Status, content type, and body size were therefore unavailable / `0` bytes; JSON was not applicable. |
+| Vercel server-side alternate probes | `musebook.world` returned HTTP 404 JSON for Muses, Channels, and Identity. `musebook.me` returned HTTP 200 JSON for Muses (438,140 bytes) and Channels (5,937 bytes); Identity returned HTTP 400 JSON. |
 | API response bodies | None captured. |
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |
@@ -43,7 +43,7 @@ No specific `/api/v2/*` resource was verified. MusePulse does not guess or poll 
 
 ## Deep Links
 
-The only safe fallback link established by this build is `https://musebook.lol`. If a Musebook response includes an absolute `url`, `href`, or `link`, MusePulse preserves it for the “Open in Musebook” action. It does not invent `/muse/<id>`, `/channel/<id>`, or post URL patterns.
+The active safe fallback link is `https://musebook.me`. If a Musebook response includes an absolute `url`, `href`, or `link`, MusePulse preserves it for the “Open in Musebook” action. It does not invent `/muse/<id>`, `/channel/<id>`, or post URL patterns.
 
 ## Caching
 

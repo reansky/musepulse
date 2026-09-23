@@ -1,13 +1,12 @@
 /* MusePulse keeps the public data boundary explicit: no mock records ship by default. */
 const CONFIG = {
   USE_MOCK_DATA: false,
-  MUSEBOOK_ORIGIN: "https://musebook.lol",
+  MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
   CACHE_TTL: 5 * 60 * 1000,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
-    { path: "/api/channels.json", type: "channels" },
-    { path: "/api/identity.json", type: "identity" }
+    { path: "/api/channels.json", type: "channels" }
   ]
 };
 
@@ -17,7 +16,7 @@ const state = {
   activity: [],
   lastSync: null,
   status: "syncing",
-  endpointStatus: { muses: "syncing", channels: "syncing", identity: "syncing" },
+  endpointStatus: { muses: "syncing", channels: "syncing" },
   errors: [],
   query: "",
   profileId: null
