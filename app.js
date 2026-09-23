@@ -718,7 +718,7 @@ function routeFromLocation() {
 function init() {
   wireEvents();
   renderAll();
-  loadData({ force: true });
+  loadData();
   routeFromLocation();
 }
 
