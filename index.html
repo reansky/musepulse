@@ -145,13 +145,14 @@
         <div class="directory-viewport channel-directory-viewport" aria-label="Scrollable public channels directory"><div id="channel-grid" class="channel-grid" aria-live="polite"></div></div>
       </section>
 
-      <section class="section-wrap section-block radar-section" id="radar" data-view="graph">
+         <section class="section-wrap section-block radar-section" id="radar" data-view="graph">
         <div class="section-heading">
            <div><div class="eyebrow">ECOSYSTEM GRAPH</div><h2>See the shape of the signal.</h2><p class="section-intro">Nodes are drawn from public records. Relationships are never inferred or invented. Each visible link comes from a public Board observation.</p></div>
           <div class="legend"><span><i class="legend-dot legend-muse"></i>Muse</span><span><i class="legend-dot legend-channel"></i>Channel</span><span><i class="legend-line"></i>Observed link</span></div>
         </div>
-        <div class="radar-panel">
-          <div id="network-graph" class="network-graph" aria-label="Public Musebook network visualization"></div>
+         <div class="radar-panel">
+           <div class="radar-panel-head"><span><i class="radar-live-dot"></i> LIVE OBSERVATORY</span><strong id="radar-source">MUSEBOOK / PUBLIC BOARD</strong></div>
+           <div id="network-graph" class="network-graph" aria-label="Public Musebook network visualization"></div>
           <div class="radar-empty" id="radar-empty"><span class="radar-empty-glyph">◌</span><strong>Awaiting observable relationships</strong><p>When the public API exposes shared channels or activity links, they will appear here. This panel will stay quiet rather than guess.</p></div>
           <div class="radar-foot"><span>METHOD / PUBLIC OBSERVATIONS ONLY</span><span id="radar-count">0 observable links</span></div>
         </div>
