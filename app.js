@@ -22,8 +22,8 @@ const state = {
   projectSpotlight: null,
   activityTotal: 0,
   lastSync: null,
-  status: "syncing",
-  endpointStatus: { muses: "syncing", channels: "syncing", activity: "syncing", projects: "syncing" },
+  status: "idle",
+  endpointStatus: { muses: "idle", channels: "idle", activity: "idle", projects: "idle" },
   errors: [],
   query: "",
   profileId: null,
@@ -42,6 +42,18 @@ const humanAccount = {
   error: ""
 };
 const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
+let humanAuthPromise = null;
+const DATA_VIEWS = new Set(["pulse", "muses", "projects", "skills", "graph"]);
+
+function ensureHumanAuth() {
+  if (!humanAuthPromise) humanAuthPromise = initHumanAuth();
+  return humanAuthPromise;
+}
+
+function ensureViewData(view) {
+  if (!DATA_VIEWS.has(view) || state.loading || state.lastRefreshAt) return;
+  loadData({ force: true });
+}
 
 const CHANNEL_COVERS = Object.freeze({
   lobby: "/og/place/campfire.png",
@@ -472,6 +484,7 @@ function openAuthModal(message = "") {
   $("#auth-modal").hidden = false;
   $("[data-action^='oauth-']")?.focus();
   setFormStatus("#auth-status", message);
+  ensureHumanAuth();
 }
 
 function closeAuthModal() {
@@ -564,15 +577,16 @@ function setSyncUi() {
   const connected = endpointStatuses.filter((status) => status === "ready" || status === "stale").length;
   const hasStale = endpointStatuses.includes("stale");
   const isSnapshot = isReady && hasStale;
-  const statusText = isReady ? isSnapshot ? "SNAPSHOT" : "LIVE" : isPartial ? "RECENT" : isError ? "UNAVAILABLE" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${isSnapshot ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
+  const isIdle = state.status === "idle";
+  const statusText = isReady ? isSnapshot ? "SNAPSHOT" : "LIVE" : isPartial ? "RECENT" : isError ? "UNAVAILABLE" : isIdle ? "READY" : "SYNCING";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${isSnapshot ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : isIdle ? "public discovery layer" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} SIGNALS` : state.status === "syncing" ? "--" : "0";
   $("#metric-activity-copy").textContent = state.activityTotal ? `${state.activityTotal} public board threads` : "public board sample";
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
-  $("#hero-sync-copy").textContent = isReady ? isSnapshot ? "Showing the latest cached public snapshot while Musebook reconnects." : `Live public records · updated ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
+  $("#hero-sync-copy").textContent = isReady ? isSnapshot ? "Showing the latest cached public snapshot while Musebook reconnects." : `Live public records · updated ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : isIdle ? "The public discovery layer for Musebook." : "Connecting to Musebook's public surface...";
   $("#hero-node-count").textContent = state.muses.length + state.channels.length || "--";
   $("#sync-badge").textContent = state.refreshing && isReady ? "UPDATING" : statusText;
   $("#sync-badge").className = `data-badge${isReady && !isSnapshot ? " ready" : isSnapshot || isPartial ? " partial" : isError ? " error" : ""}`;
@@ -1154,6 +1168,8 @@ function routeFromLocation() {
     "for-muses": "method"
   }[hash] || "home";
   setActiveView(view);
+  if (view === "workspace") ensureHumanAuth();
+  ensureViewData(view);
 }
 
 function setActiveView(view) {
@@ -1175,8 +1191,6 @@ function setActiveView(view) {
 function init() {
   wireEvents();
   renderAll();
-  initHumanAuth();
-  loadData();
   routeFromLocation();
 }
 
