@@ -477,7 +477,7 @@ async function getSupabaseClient() {
       if (!response.ok) throw new Error("Human account service is not configured.");
       const config = await response.json();
       const { createClient } = await import(SUPABASE_MODULE_URL);
-      humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } });
+       humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
       return humanAccount.client;
     })().catch((error) => {
       humanAccount.clientPromise = null;
@@ -653,8 +653,8 @@ async function loadHumanProfile() {
   }
   const { data, error } = await humanAccount.client.from("profiles").select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").eq("id", humanAccount.user.id).maybeSingle();
   if (error) {
-    humanAccount.status = "error";
     humanAccount.error = error.message;
+    humanAccount.status = "signed_in";
   } else {
     humanAccount.profile = data;
     humanAccount.status = "signed_in";
@@ -666,6 +666,15 @@ async function loadHumanProfile() {
 async function initHumanAuth() {
   try {
     const client = await getSupabaseClient();
+    const callbackUrl = new URL(window.location.href);
+    const code = callbackUrl.searchParams.get("code");
+    if (code) {
+      const { error } = await client.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      callbackUrl.searchParams.delete("code");
+      callbackUrl.searchParams.delete("state");
+      window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+    }
     const { data, error } = await client.auth.getSession();
     if (error) throw error;
     humanAccount.session = data.session;
