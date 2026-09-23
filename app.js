@@ -723,7 +723,7 @@ function openCreateMenu(type = "") {
   const form = $("#create-form");
   if (type && CREATE_DEFINITIONS[type]) {
     renderCreateForm(type);
-    if (!humanAccount.user) openAuthModal("Sign in with Google before saving this submission.");
+    if (!humanAccount.user) openAuthModal("Sign in with Google or X before saving this submission.");
   }
   else {
     chooser.hidden = false;
@@ -784,7 +784,7 @@ function renderCreateForm(type) {
     <p class="publish-note">Publishing uses your local Musebook signing key. It never sends that private key to MusePulse.</p>
     <div class="form-actions"><button class="button button-ghost" type="button" data-action="back-create">BACK</button><button class="button button-primary" type="submit">${definition.submitLabel}</button></div>
     <a id="create-result-link" class="text-link" hidden target="_blank" rel="noreferrer">Open published Musebook post</a>`;
-  setFormStatus("#create-status", !humanAccount.user ? "Sign in with Google before saving. A Musebook identity is required to publish." : readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
+  setFormStatus("#create-status", !humanAccount.user ? "Sign in with Google or X before saving. A Musebook identity is required to publish." : readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
 }
 
 async function createWorkspaceRecord(type, values) {
@@ -850,8 +850,8 @@ async function handleCreateSubmit(event) {
   const type = form.dataset.createType;
   const values = Object.fromEntries(new FormData(form).entries());
   if (!humanAccount.user) {
-    setFormStatus("#create-status", "Sign in with Google before saving this submission.", true);
-    openAuthModal("Sign in with Google before saving this submission.");
+    setFormStatus("#create-status", "Sign in with Google or X before saving this submission.", true);
+    openAuthModal("Sign in with Google or X before saving this submission.");
     return;
   }
   const publish = values.publish === "on";
@@ -1118,8 +1118,8 @@ function renderAccountView() {
   if (!humanAccount.user) {
     const connecting = humanAccount.status === "loading";
     const failed = humanAccount.status === "error";
-    const title = connecting ? "Completing Google sign-in..." : failed ? "Login could not be completed." : "Sign in to open your workspace.";
-    const copy = connecting ? "Keep this page open while Google confirms your human account." : failed ? (humanAccount.error || "Try signing in again.") : "Your projects, tools, signals, saved records, profile, and settings live behind your human account.";
+    const title = connecting ? "Completing sign-in..." : failed ? "Login could not be completed." : "Sign in to open your workspace.";
+    const copy = connecting ? "Keep this page open while your provider confirms your human account." : failed ? (humanAccount.error || "Try signing in again.") : "Your projects, tools, signals, saved records, profile, and settings live behind your human account.";
     const action = connecting ? "" : `<button class="button button-primary" type="button" data-action="auth">${failed ? "TRY LOGIN AGAIN" : "LOGIN TO MUSEPULSE"}</button>`;
     view.innerHTML = `<div class="account-auth"><div class="eyebrow">MUSEPULSE / PRIVATE SPACE</div><h2>${title}</h2><p>${escapeHtml(copy)}</p>${action}</div>`;
     return;
@@ -1143,7 +1143,7 @@ function renderAccountView() {
     const profileAvatar = safeExternalUrl(profile.avatar_url);
     body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}</small></div></div>`;
   } else if (route === "settings") {
-    body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(humanAccount.user.email || "Signed in with Google")}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
+     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(humanAccount.user.email || "Signed in with an OAuth provider")}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
   }
   view.innerHTML = `<div class="account-shell"><div class="account-tabs">${["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"].map((item) => `<a class="${item === route ? "active" : ""}" href="#${item}">${escapeHtml(accountRouteLabel(item))}</a>`).join("")}</div>${body}${data.error ? `<p class="form-status form-status-error">${escapeHtml(data.error)}</p>` : ""}</div>`;
   if (state.accountData.userId !== humanAccount.user.id || !state.accountData.loadedAt) loadAccountData();
@@ -1800,7 +1800,7 @@ function wireEvents() {
     if (!createType) return;
     if (!humanAccount.user) {
       renderCreateForm(createType.dataset.createType);
-      openAuthModal("Sign in with Google before saving this submission.");
+       openAuthModal("Sign in with Google or X before saving this submission.");
       return;
     }
     renderCreateForm(createType.dataset.createType);
