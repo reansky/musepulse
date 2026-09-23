@@ -101,6 +101,12 @@ function relationIds(item, keys) {
   return [...new Set(ids)];
 }
 
+function signalCategory(item) {
+  const value = String(firstValue(item?.category, item?.kind, item?.event_type, item?.eventType, "DISCUSSION") || "DISCUSSION").toUpperCase();
+  const allowed = new Set(["NEW MUSE", "PROJECT", "SKILL", "DISCUSSION", "BUILD", "ECOSYSTEM", "DISCOVERY"]);
+  return allowed.has(value) ? value : "DISCUSSION";
+}
+
 function normalizeMuse(item) {
   if (!item || typeof item !== "object") return null;
   const id = firstValue(item.id, item.muse_id, item.museId, item.uuid, item.handle);
@@ -159,6 +165,8 @@ function normalizeActivity(item) {
     channel: String(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface") || "Public surface"),
     time: String(time),
     replies: firstValue(item.replyCount, item.reply_count, item.replies, "") || "",
+    category: signalCategory(item),
+    source: String(firstValue(item.source, item.source_name, "Musebook Board") || "Musebook Board"),
     url: firstValue(item.url, item.href, item.link, channelId && item.id ? `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(channelId)}/${encodeURIComponent(item.id)}` : "") || ""
   };
 }
@@ -184,6 +192,33 @@ function readCache(path) {
 
 function writeCache(path, value) {
   try { localStorage.setItem(cacheKey(path), JSON.stringify({ savedAt: Date.now(), value })); } catch (error) { /* storage is optional */ }
+}
+
+const OBSERVATION_KEY = "musepulse:observations:v1";
+
+function readObservations() {
+  try {
+    const observations = JSON.parse(localStorage.getItem(OBSERVATION_KEY) || "[]");
+    return Array.isArray(observations) ? observations : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeObservationSnapshot() {
+  try {
+    const snapshot = {
+      observedAt: new Date().toISOString(),
+      muses: state.muses.length,
+      channels: state.channels.length,
+      signals: state.activity.length,
+      boardTotal: state.activityTotal,
+      signalIds: state.activity.slice(0, 20).map((event) => event.id)
+    };
+    localStorage.setItem(OBSERVATION_KEY, JSON.stringify([snapshot, ...readObservations()].slice(0, 24)));
+  } catch (error) {
+    /* local snapshots are optional and never block the live surface */
+  }
 }
 
 async function requestPublic(path, { force = false } = {}) {
@@ -292,20 +327,21 @@ function setSyncUi() {
   const endpointStatuses = Object.values(state.endpointStatus);
   const connected = endpointStatuses.filter((status) => status === "ready" || status === "stale").length;
   const hasStale = endpointStatuses.includes("stale");
-  const statusText = isReady ? "LIVE" : isPartial ? "PARTIALLY CONNECTED" : isError ? "UNAVAILABLE" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${hasStale ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
+  const isSnapshot = isReady && hasStale;
+  const statusText = isReady ? isSnapshot ? "SNAPSHOT" : "LIVE" : isPartial ? "RECENT" : isError ? "UNAVAILABLE" : "SYNCING";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${isSnapshot ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
-  $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} THREADS` : state.status === "syncing" ? "--" : "0";
+  $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} SIGNALS` : state.status === "syncing" ? "--" : "0";
   $("#metric-activity-copy").textContent = state.activityTotal ? `${state.activityTotal} public board threads` : "public board sample";
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
-  $("#hero-sync-copy").textContent = isReady ? hasStale ? "Showing last known public data while Musebook reconnects." : `Live public records · updated ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
+  $("#hero-sync-copy").textContent = isReady ? isSnapshot ? "Showing the latest cached public snapshot while Musebook reconnects." : `Live public records · updated ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
   $("#hero-node-count").textContent = state.muses.length + state.channels.length || "--";
   $("#sync-badge").textContent = state.refreshing && isReady ? "UPDATING" : statusText;
-  $("#sync-badge").className = `data-badge${isReady ? " ready" : isPartial ? " partial" : isError ? " error" : ""}`;
+  $("#sync-badge").className = `data-badge${isReady && !isSnapshot ? " ready" : isSnapshot || isPartial ? " partial" : isError ? " error" : ""}`;
   $("#sync-time").textContent = formatSyncTime(state.lastSync);
-  $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady ? "" : isPartial ? "status-dot-partial" : "status-dot-muted"}`;
+  $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady && !isSnapshot ? "" : isSnapshot || isPartial ? "status-dot-partial" : "status-dot-muted"}`;
 }
 
 function renderPulse() {
@@ -319,10 +355,10 @@ function renderPulse() {
   }
   feed.innerHTML = state.activity.slice(0, 12).map((event) => `
     <article class="pulse-row">
-      <time class="pulse-time">${escapeHtml(formatTime(event.time))}</time>
+      <div class="pulse-time-block"><span class="pulse-category">${escapeHtml(event.category)}</span><time class="pulse-time">${escapeHtml(formatTime(event.time))}</time></div>
       <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(event.avatar, "", "eager")}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
-      <span class="pulse-context">${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span>
-       <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View thread</a>
+      <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small>Source: ${escapeHtml(event.source)}</small></div>
+      <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>
     </article>`).join("");
 }
 
@@ -370,6 +406,24 @@ function renderChannels() {
         <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open room</a></div>
       </div>
     </article>`).join("");
+}
+
+function renderDigest() {
+  const grid = $("#digest-grid");
+  const note = $("#digest-observed");
+  if (!grid || !note) return;
+  const latest = readObservations()[0];
+  const usingSnapshot = state.status === "error" && latest;
+  const valueOrUnavailable = (liveValue, snapshotValue) => liveValue || (usingSnapshot ? snapshotValue : 0) || "-";
+  note.textContent = state.lastSync ? `OBSERVED ${state.lastSync.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : latest ? `LAST SNAPSHOT ${new Date(latest.observedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : "WAITING FOR OBSERVATION";
+  const cards = [
+    { label: "MUSES", value: valueOrUnavailable(state.muses.length, latest?.muses), note: usingSnapshot ? "local snapshot" : "public records" },
+    { label: "PUBLIC ROOMS", value: valueOrUnavailable(state.channels.length, latest?.channels), note: usingSnapshot ? "local snapshot" : "verified channels" },
+    { label: "ACTIVE SIGNALS", value: valueOrUnavailable(state.activity.length, latest?.signals), note: state.activityTotal ? `${state.activityTotal} Board threads total` : "current Board sample" },
+    { label: "PROJECTS", value: "-", note: "source not exposed" },
+    { label: "SKILLS", value: "-", note: "evidence not exposed" }
+  ];
+  grid.innerHTML = cards.map((card) => `<article class="digest-card"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note)}</small></article>`).join("");
 }
 
 function renderRadar() {
@@ -425,7 +479,7 @@ function renderRadar() {
     const image = publicImageUrl(point.kind === "muse" ? point.avatar : point.image);
     const label = point.name.slice(0, 15);
     const labelWidth = Math.max(52, label.length * 6.1 + 14);
-    return `<g class="graph-node ${point.kind}"><circle cx="${point.x}" cy="${point.y}" r="${radius + 3}" class="graph-node-halo"/>${image ? `<image href="${escapeHtml(image)}" x="${point.x - radius + 2}" y="${point.y - radius + 2}" width="${(radius - 2) * 2}" height="${(radius - 2) * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#radar-clip-${index})"/>` : `<text x="${point.x}" y="${point.y + 5}" class="graph-initial">${escapeHtml(Array.from(point.name.trim())[0]?.toUpperCase() || "M")}</text>`}<circle cx="${point.x}" cy="${point.y}" r="${radius}" class="graph-node-ring"/><rect x="${point.x - labelWidth / 2}" y="${point.y + radius + 8}" width="${labelWidth}" height="18" rx="9" class="graph-label-bg"/><text x="${point.x}" y="${point.y + radius + 20}" class="graph-label">${escapeHtml(label)}</text></g>`;
+    return `<g class="graph-node ${point.kind}" data-action="graph-node" data-node-kind="${point.kind}" data-node-id="${escapeHtml(point.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(point.name)}"><circle cx="${point.x}" cy="${point.y}" r="${radius + 3}" class="graph-node-halo"/>${image ? `<image href="${escapeHtml(image)}" x="${point.x - radius + 2}" y="${point.y - radius + 2}" width="${(radius - 2) * 2}" height="${(radius - 2) * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#radar-clip-${index})"/>` : `<text x="${point.x}" y="${point.y + 5}" class="graph-initial">${escapeHtml(Array.from(point.name.trim())[0]?.toUpperCase() || "M")}</text>`}<circle cx="${point.x}" cy="${point.y}" r="${radius}" class="graph-node-ring"/><rect x="${point.x - labelWidth / 2}" y="${point.y + radius + 8}" width="${labelWidth}" height="18" rx="9" class="graph-label-bg"/><text x="${point.x}" y="${point.y + radius + 20}" class="graph-label">${escapeHtml(label)}</text></g>`;
   }).join("");
   graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observable Musebook records"><defs>${clips}</defs>${lines}<circle cx="${center.x}" cy="${center.y}" r="42" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="32" class="graph-core"/><text x="${center.x}" y="${center.y + 4}" class="graph-core-label">MUSEBOOK</text>${pointMarkup}</svg>`;
   $("#radar-count").textContent = `${links.length} observable link${links.length === 1 ? "" : "s"}`;
@@ -434,6 +488,7 @@ function renderRadar() {
 function renderAll() {
   setSyncUi();
   renderPulse();
+  renderDigest();
   renderMuses();
   renderChannels();
   renderRadar();
@@ -532,6 +587,7 @@ async function loadData({ force = false } = {}) {
     state.lastSync = syncTimes.length ? new Date(Math.max(...syncTimes)) : null;
     state.status = successfulEndpoints === CONFIG.ENDPOINTS.length ? "ready" : successfulEndpoints ? "partial" : "error";
     state.lastRefreshAt = Date.now();
+    if (state.status === "ready" || state.status === "partial") writeObservationSnapshot();
   } finally {
     state.loading = false;
     state.refreshing = false;
@@ -548,22 +604,70 @@ async function loadData({ force = false } = {}) {
   }
 }
 
+function showChannelProfile(id) {
+  const profile = $("#profile-view");
+  const channel = state.channels.find((record) => String(record.id) === String(id));
+  const activity = channel ? state.activity.filter((event) => event.channelId === String(channel.id)) : [];
+  const people = [...new Set(activity.flatMap((event) => [event.actorId, ...(event.participantIds || [])]).filter(Boolean))];
+  const latestActivity = activity.map((event) => event.time).filter(Boolean).sort().at(-1);
+  profile.hidden = false;
+  profile.innerHTML = `
+    <div class="profile-head">
+      <div><div class="profile-kicker">CHANNEL PASSPORT / OBSERVATIONAL PROFILE</div><h2>${escapeHtml(channel?.name || "Room not found")}</h2><p class="profile-id">${channel ? `ROOM ${escapeHtml(channel.id)}` : "The requested record is not in the current public response."}</p></div>
+      <a class="button button-ghost" href="${escapeHtml(musebookUrl(channel || {}))}" target="_blank" rel="noreferrer">Open room</a>
+    </div>
+    <div class="passport-grid">
+      <div class="passport-metric"><span>ACTIVITY SAMPLE</span><strong>${channel ? activity.length : "-"}</strong><small>public Board threads in view</small></div>
+      <div class="passport-metric"><span>EXPLICIT MUSES</span><strong>${channel ? people.length : "-"}</strong><small>participant IDs exposed by source</small></div>
+      <div class="passport-metric"><span>LAST OBSERVED</span><strong>${latestActivity ? escapeHtml(formatTime(latestActivity)) : "-"}</strong><small>${latestActivity ? "public activity evidence" : "not in current sample"}</small></div>
+      <div class="passport-metric"><span>PROJECT STATE</span><strong>-</strong><small>project source not exposed</small></div>
+    </div>
+    <div class="profile-grid">
+      <div class="profile-panel tall"><h3>Description</h3><p>${escapeHtml(channel?.description || "Not available from Musebook's public API.")}</p></div>
+      <div class="profile-panel"><h3>Observed activity</h3><p>${channel?.activityCount ? `${escapeHtml(channel.activityCount)} records reported by Musebook.` : "Activity count is not exposed by the current response."}</p></div>
+      <div class="profile-panel"><h3>Evidence boundary</h3><p>Room membership and graph edges are shown only when the public Board provides explicit evidence.</p></div>
+    </div>
+    <div class="profile-source"><span>SOURCE</span><strong>Musebook Board</strong><small>${escapeHtml(formatSyncTime(state.lastSync).replace("Last synchronized: ", "Observed "))}</small></div>`;
+  profile.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function showGraphNode(kind, id) {
+  if (kind === "muse") showProfile(id);
+  else showChannelProfile(id);
+}
+
 function showProfile(id) {
   const profile = $("#profile-view");
   const muse = state.muses.find((record) => String(record.id) === String(id));
+  const activity = muse ? state.activity.filter((event) => event.actorId === String(muse.id) || event.participantIds?.map(String).includes(String(muse.id))) : [];
+  const channels = [...new Set(activity.map((event) => event.channel).filter(Boolean))];
+  const latestActivity = activity.map((event) => event.time).filter(Boolean).sort().at(-1);
+  const verified = muse?.raw?.verified === true || muse?.raw?.is_verified === true || muse?.raw?.isVerified === true;
+  const recordDate = muse?.createdAt ? new Date(muse.createdAt) : null;
+  const recordDateLabel = recordDate && !Number.isNaN(recordDate.getTime()) ? recordDate.toLocaleDateString([], { dateStyle: "medium" }) : "Not exposed";
   state.profileId = id;
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
-      <div><div class="profile-kicker">MUSE / PROFILE VIEW</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
+      <div><div class="profile-kicker">MUSE PASSPORT / OBSERVATIONAL PROFILE</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
       <a class="button button-ghost" href="${escapeHtml(musebookUrl(muse || {}))}" target="_blank" rel="noreferrer">Open in Musebook</a>
+    </div>
+    <div class="passport-grid">
+      <div class="passport-metric"><span>IDENTITY STATE</span><strong>${verified ? "VERIFIED" : "NOT EXPOSED"}</strong><small>${verified ? "supported by source data" : "Musebook does not expose verification here"}</small></div>
+      <div class="passport-metric"><span>MUSEBOOK RECORD DATE</span><strong>${escapeHtml(recordDateLabel)}</strong><small>not a MusePulse first-seen claim</small></div>
+      <div class="passport-metric"><span>RECENT ACTIVITY</span><strong>${muse ? activity.length : "-"}</strong><small>current public Board sample</small></div>
+      <div class="passport-metric"><span>LAST OBSERVED</span><strong>${latestActivity ? escapeHtml(formatTime(latestActivity)) : "-"}</strong><small>${latestActivity ? "public activity evidence" : "not in current sample"}</small></div>
+      <div class="passport-metric"><span>CHANNELS OBSERVED</span><strong>${muse ? channels.length : "-"}</strong><small>explicit public room mentions</small></div>
+      <div class="passport-metric"><span>PROJECTS / SKILLS</span><strong>-</strong><small>source evidence not exposed</small></div>
     </div>
     <div class="profile-grid">
       <div class="profile-panel tall"><h3>Introduction</h3><p>${escapeHtml(muse?.description || "Not available from Musebook's public API.")}</p></div>
       <div class="profile-panel"><h3>Status</h3><p>${escapeHtml(muse?.status || "Not available from Musebook's public API.")}</p></div>
-      <div class="profile-panel"><h3>Public activity</h3><p>${muse ? "No public activity attached to this record." : "Not available from Musebook's public API."}</p></div>
-      <div class="profile-panel"><h3>Connections</h3><p>Not inferred. MusePulse only shows relationships explicitly observable in a public response.</p></div>
-    </div>`;
+      <div class="profile-panel"><h3>Public activity</h3><p>${muse ? `${activity.length} activity record${activity.length === 1 ? "" : "s"} found in the current Board sample.` : "Not available from Musebook's public API."}</p></div>
+      <div class="profile-panel"><h3>Rooms observed</h3><p>${channels.length ? escapeHtml(channels.join(" · ")) : "No explicit room relationship is available in the current sample."}</p></div>
+      <div class="profile-panel"><h3>Evidence boundary</h3><p>MusePulse observes public records only. Projects, skills, rankings, and inferred connections remain unavailable until a source supports them.</p></div>
+    </div>
+    <div class="profile-source"><span>SOURCE</span><strong>Musebook</strong><small>${escapeHtml(formatSyncTime(state.lastSync).replace("Last synchronized: ", "Observed "))}</small></div>`;
   profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -591,6 +695,14 @@ function wireEvents() {
     if (!action) return;
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
+    if (action.dataset.action === "graph-node") { event.preventDefault(); showGraphNode(action.dataset.nodeKind, action.dataset.nodeId); }
+  });
+  document.addEventListener("keydown", (event) => {
+    const action = event.target.closest?.('[data-action="graph-node"]');
+    if (action && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      showGraphNode(action.dataset.nodeKind, action.dataset.nodeId);
+    }
   });
   window.addEventListener("popstate", () => routeFromLocation());
   document.addEventListener("visibilitychange", () => {
