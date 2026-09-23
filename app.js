@@ -2014,16 +2014,16 @@ function routeFromLocation() {
     return;
   }
   $("#profile-view").hidden = true;
-  if (window.location.pathname === "/workspace") {
-    state.accountRoute = "workspace";
+  const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+  if (ACCOUNT_ROUTES.has(hash)) {
+    state.accountRoute = hash;
     setActiveView("account");
     ensureHumanAuth();
     renderAccountView();
     return;
   }
-  const hash = window.location.hash.replace(/^#/, "").toLowerCase();
-  if (ACCOUNT_ROUTES.has(hash)) {
-    state.accountRoute = hash;
+  if (window.location.pathname === "/workspace") {
+    state.accountRoute = "workspace";
     setActiveView("account");
     ensureHumanAuth();
     renderAccountView();
