@@ -121,6 +121,60 @@ function decodeProjectsSnapshot(html) {
   };
 }
 
+function isPublicThreadPath(path) {
+  return /^\/board\/[A-Za-z0-9_-]+\/\d+$/.test(path);
+}
+
+function decodeThreadSnapshot(html) {
+  const loaderData = decodeReactRouterLoaderData(html);
+  const loader = loaderData?.["routes/board.thread"];
+  const thread = loader?.thread;
+  if (!thread || !Array.isArray(thread.posts)) return null;
+  const room = loader.room || {};
+  const authors = loader.authors || {};
+  const authorFor = (id) => authors[id] || {};
+  const threadAuthor = authorFor(thread.authorId);
+  return {
+    board: "musebook",
+    source: "public_thread",
+    asOf: loader.asOf || null,
+    room: {
+      slug: room.slug || thread.roomSlug || "",
+      name: room.name || thread.roomSlug || "Public room",
+      description: room.description || ""
+    },
+    thread: {
+      id: String(thread.id),
+      roomSlug: thread.roomSlug || room.slug || "",
+      title: thread.title || "Public thread",
+      excerpt: thread.excerpt || "",
+      authorId: thread.authorId || "",
+      author_name: threadAuthor.name || thread.authorId || "Public Muse",
+      author_avatar: threadAuthor.avatarUrl || threadAuthor.avatar_url || "",
+      replyCount: thread.replyCount || 0,
+      participantCount: thread.participantCount || 0,
+      participantIds: Array.isArray(thread.participantIds) ? thread.participantIds : [],
+      createdAt: thread.createdAt || "",
+      lastReplyAt: thread.lastReplyAt || "",
+      posts: thread.posts.map((post) => {
+        const author = authorFor(post.authorId);
+        return {
+          id: String(post.id),
+          threadId: String(post.threadId || thread.id),
+          parentId: post.parentId == null ? null : String(post.parentId),
+          depth: Number(post.depth || 0),
+          authorId: post.authorId || "",
+          author_name: author.name || post.authorId || "Public Muse",
+          author_avatar: author.avatarUrl || author.avatar_url || "",
+          body: typeof post.body === "string" ? post.body : "",
+          createdAt: post.createdAt || "",
+          reactions: post.reactions || {}
+        };
+      })
+    }
+  };
+}
+
 module.exports = async function handler(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
@@ -133,7 +187,8 @@ module.exports = async function handler(request, response) {
   const mediaRequest = isPublicMediaPath(path);
   const boardRequest = path === "/board";
   const projectsRequest = path === "/projects";
-  if (!ALLOWED_PATHS.has(path) && !mediaRequest) {
+  const threadRequest = isPublicThreadPath(path);
+  if (!ALLOWED_PATHS.has(path) && !mediaRequest && !threadRequest) {
     return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
   }
 
@@ -141,7 +196,7 @@ module.exports = async function handler(request, response) {
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const upstream = await fetch(`${ACTIVE_ORIGIN}${path}`, {
-      headers: { Accept: projectsRequest ? "text/html" : "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
+      headers: { Accept: projectsRequest || threadRequest ? "text/html" : "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
       signal: controller.signal
     });
     if (mediaRequest) {
@@ -163,6 +218,13 @@ module.exports = async function handler(request, response) {
     if (projectsRequest) {
       const snapshot = decodeProjectsSnapshot(await upstream.text());
       if (!snapshot) return response.status(502).json({ error: "Musebook project data could not be decoded." });
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+      return response.status(upstream.status).json(snapshot);
+    }
+    if (threadRequest) {
+      const snapshot = decodeThreadSnapshot(await upstream.text());
+      if (!snapshot) return response.status(502).json({ error: "Musebook thread data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
       return response.status(upstream.status).json(snapshot);
