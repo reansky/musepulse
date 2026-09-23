@@ -2042,6 +2042,7 @@ function routeFromLocation() {
     radar: "graph",
     graph: "graph",
     methodology: "method",
+    about: "about",
     method: "method",
     "for-muses": "method"
   }[hash] || "home";
@@ -2056,7 +2057,7 @@ function setActiveView(view) {
   $all("#primary-nav a").forEach((link) => {
     const target = link.getAttribute("href")?.replace(/^#/, "").toLowerCase();
     const targetView = {
-      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", workspace: "workspace", radar: "graph", methodology: "method"
+      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", workspace: "workspace", radar: "graph", methodology: "method", about: "about"
     }[target] || "home";
     const active = targetView === view;
     link.classList.toggle("active", active);
