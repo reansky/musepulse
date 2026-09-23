@@ -8,7 +8,8 @@ const CONFIG = {
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" },
-    { path: "/board", type: "activity" }
+    { path: "/board", type: "activity" },
+    { path: "/projects", type: "projects" }
   ]
 };
 
@@ -16,10 +17,13 @@ const state = {
   muses: [],
   channels: [],
   activity: [],
+  projects: [],
+  skills: [],
+  projectSpotlight: null,
   activityTotal: 0,
   lastSync: null,
   status: "syncing",
-  endpointStatus: { muses: "syncing", channels: "syncing" },
+  endpointStatus: { muses: "syncing", channels: "syncing", activity: "syncing", projects: "syncing" },
   errors: [],
   query: "",
   profileId: null,
@@ -174,6 +178,46 @@ function normalizeActivity(item) {
 function unwrapActivity(payload) {
   const roots = asList(payload, ["threads", "activity", "activities", "events", "posts", "items"]);
   return roots.map(normalizeActivity).filter(Boolean);
+}
+
+function normalizeProjectThread(item, room = {}) {
+  if (!item || typeof item !== "object") return null;
+  const roomSlug = String(firstValue(item.roomSlug, room.slug, "") || "");
+  const id = firstValue(item.id, item.threadId, "");
+  const title = firstValue(item.title, item.name, "Public project evidence");
+  if (!id || !title) return null;
+  return {
+    id: String(id),
+    roomSlug,
+    roomName: String(firstValue(item.roomName, room.name, roomSlug, "Public room") || "Public room"),
+    authorId: String(firstValue(item.authorId, "") || ""),
+    author: String(firstValue(item.authorName, item.author, item.authorId, "Public Muse") || "Public Muse"),
+    avatar: firstValue(item.authorAvatar, item.avatar, "") || "",
+    title: String(title),
+    excerpt: String(firstValue(item.excerpt, item.description, "") || ""),
+    replies: Number(firstValue(item.replyCount, item.replies, 0) || 0),
+    participants: Number(firstValue(item.participantCount, item.participants, 0) || 0),
+    participantIds: Array.isArray(item.participantIds) ? item.participantIds : [],
+    time: String(firstValue(item.lastReplyAt, item.createdAt, "") || ""),
+    createdAt: String(firstValue(item.createdAt, "") || ""),
+    url: firstValue(item.url, item.href, "") || ""
+  };
+}
+
+function normalizeProjects(payload) {
+  const sections = Array.isArray(payload?.sections) ? payload.sections : [];
+  const records = sections.flatMap((section) => {
+    const room = section?.room || {};
+    return Array.isArray(section?.threads) ? section.threads.map((thread) => normalizeProjectThread(thread, room)).filter(Boolean) : [];
+  });
+  const projectRecords = records.filter((record) => record.roomSlug !== "skillexchange");
+  const skillRecords = records.filter((record) => record.roomSlug === "skillexchange");
+  const spotlight = payload?.spotlight ? normalizeProjectThread(payload.spotlight, { slug: payload.spotlight.roomSlug, name: payload.spotlight.roomName }) : null;
+  return {
+    projects: [...new Map(projectRecords.map((record) => [record.id, record])).values()],
+    skills: [...new Map(skillRecords.map((record) => [record.id, record])).values()],
+    spotlight
+  };
 }
 
 function cacheKey(path) {
@@ -420,10 +464,55 @@ function renderDigest() {
     { label: "MUSES", value: valueOrUnavailable(state.muses.length, latest?.muses), note: usingSnapshot ? "local snapshot" : "public records" },
     { label: "PUBLIC ROOMS", value: valueOrUnavailable(state.channels.length, latest?.channels), note: usingSnapshot ? "local snapshot" : "verified channels" },
     { label: "ACTIVE SIGNALS", value: valueOrUnavailable(state.activity.length, latest?.signals), note: state.activityTotal ? `${state.activityTotal} Board threads total` : "current Board sample" },
-    { label: "PROJECTS", value: "-", note: "source not exposed" },
-    { label: "SKILLS", value: "-", note: "evidence not exposed" }
+    { label: "PROJECTS", value: state.projects.length || "-", note: state.projects.length ? "public project threads" : "source not exposed" },
+    { label: "SKILLS", value: state.skills.length || "-", note: state.skills.length ? "public Schoolhouse threads" : "evidence not exposed" }
   ];
   grid.innerHTML = cards.map((card) => `<article class="digest-card"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note)}</small></article>`).join("");
+}
+
+function sourceBadge(type, count) {
+  const status = state.endpointStatus[type];
+  if (status === "stale") return "SNAPSHOT";
+  if (status === "error") return "UNAVAILABLE";
+  if (status === "ready") return count ? "LIVE" : "LIVE / EMPTY";
+  return "SYNCING";
+}
+
+function evidenceCard(record, kind, featured = false) {
+  const isSkill = kind === "skill";
+  return `<article class="evidence-card${isSkill ? " evidence-card-dark" : ""}${featured ? " evidence-card-featured" : ""}">
+    <div class="evidence-card-top"><span>${featured ? "PROJECT SPOTLIGHT" : isSkill ? "SKILL EVIDENCE" : "PROJECT THREAD"}</span><time>${escapeHtml(formatTime(record.time))}</time></div>
+    <h3>${escapeHtml(record.title)}</h3>
+    <p>${escapeHtml(record.excerpt || "The public thread does not expose an excerpt.")}</p>
+    <div class="evidence-card-meta"><span>${escapeHtml(record.roomName)}</span><span>${escapeHtml(record.author)}</span><span>${record.replies} replies</span></div>
+    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}" target="_blank" rel="noreferrer">View evidence</a>
+  </article>`;
+}
+
+function intelligenceFallback(kind) {
+  const isSkill = kind === "skill";
+  const unavailable = state.endpointStatus.projects === "error";
+  return `<div class="availability-panel${isSkill ? " availability-panel-dark" : ""}">
+    <div class="availability-index">${isSkill ? "SKILL EXCHANGE" : "PROJECT RADAR"} / 00</div>
+    <div><strong>${unavailable ? "Public project source unavailable." : isSkill ? "No public skill evidence yet." : "No public project threads yet."}</strong><p>${unavailable ? "Musebook's public Projects response is temporarily unavailable. MusePulse will keep the panel empty rather than infer records." : isSkill ? "The verified Projects page has not returned any Schoolhouse threads yet." : "The verified Projects page has not returned any public workshop threads yet."}</p></div>
+    <div class="availability-meta"><span>STATE</span><b>${unavailable ? "UNAVAILABLE" : "LIVE / EMPTY"}</b><span>SOURCE</span><b>MUSEBOOK /PROJECTS</b></div>
+    <a class="text-link" href="https://musebook.me/projects" target="_blank" rel="noreferrer">Inspect source</a>
+  </div>`;
+}
+
+function renderIntelligence() {
+  const projectList = $("#project-radar-list");
+  const skillList = $("#skill-exchange-list");
+  if (!projectList || !skillList) return;
+  const projectItems = state.projectSpotlight
+    ? [state.projectSpotlight, ...state.projects.filter((record) => record.id !== state.projectSpotlight.id).slice(0, 5)]
+    : state.projects.slice(0, 6);
+  projectList.innerHTML = projectItems.length ? projectItems.map((record, index) => evidenceCard(record, "project", index === 0 && Boolean(state.projectSpotlight))).join("") : intelligenceFallback("project");
+  skillList.innerHTML = state.skills.length ? state.skills.slice(0, 6).map((record) => evidenceCard(record, "skill")).join("") : intelligenceFallback("skill");
+  const projectStatus = $("#project-status");
+  const skillStatus = $("#skill-status");
+  if (projectStatus) projectStatus.textContent = `${sourceBadge("projects", state.projects.length)} · ${state.projects.length} EVIDENCE`;
+  if (skillStatus) skillStatus.textContent = `${sourceBadge("projects", state.skills.length)} · ${state.skills.length} EVIDENCE`;
 }
 
 function renderRadar() {
@@ -491,6 +580,7 @@ function renderAll() {
   renderDigest();
   renderMuses();
   renderChannels();
+  renderIntelligence();
   renderRadar();
   renderSearchResults(state.query);
 }
@@ -576,6 +666,12 @@ async function loadData({ force = false } = {}) {
           rawActivity.push(...unwrapActivity(value));
           state.activityTotal = Number(value.total || value.page?.total || 0);
         }
+        if (type === "projects") {
+          const normalized = normalizeProjects(value);
+          state.projects = normalized.projects;
+          state.skills = normalized.skills;
+          state.projectSpotlight = normalized.spotlight;
+        }
       } else {
         if (endpoint) state.endpointStatus[endpoint.type] = "error";
         state.errors.push(result.reason?.message || "Endpoint unavailable");
@@ -641,6 +737,8 @@ function showProfile(id) {
   const muse = state.muses.find((record) => String(record.id) === String(id));
   const activity = muse ? state.activity.filter((event) => event.actorId === String(muse.id) || event.participantIds?.map(String).includes(String(muse.id))) : [];
   const channels = [...new Set(activity.map((event) => event.channel).filter(Boolean))];
+  const projectEvidence = muse ? state.projects.filter((record) => record.authorId === String(muse.id) || record.participantIds.map(String).includes(String(muse.id))) : [];
+  const skillEvidence = muse ? state.skills.filter((record) => record.authorId === String(muse.id) || record.participantIds.map(String).includes(String(muse.id))) : [];
   const latestActivity = activity.map((event) => event.time).filter(Boolean).sort().at(-1);
   const verified = muse?.raw?.verified === true || muse?.raw?.is_verified === true || muse?.raw?.isVerified === true;
   const recordDate = muse?.createdAt ? new Date(muse.createdAt) : null;
@@ -658,14 +756,14 @@ function showProfile(id) {
       <div class="passport-metric"><span>RECENT ACTIVITY</span><strong>${muse ? activity.length : "-"}</strong><small>current public Board sample</small></div>
       <div class="passport-metric"><span>LAST OBSERVED</span><strong>${latestActivity ? escapeHtml(formatTime(latestActivity)) : "-"}</strong><small>${latestActivity ? "public activity evidence" : "not in current sample"}</small></div>
       <div class="passport-metric"><span>CHANNELS OBSERVED</span><strong>${muse ? channels.length : "-"}</strong><small>explicit public room mentions</small></div>
-      <div class="passport-metric"><span>PROJECTS / SKILLS</span><strong>-</strong><small>source evidence not exposed</small></div>
+       <div class="passport-metric"><span>PROJECTS / SKILLS</span><strong>${muse ? `${projectEvidence.length} / ${skillEvidence.length}` : "-"}</strong><small>public project threads / Schoolhouse evidence</small></div>
     </div>
     <div class="profile-grid">
       <div class="profile-panel tall"><h3>Introduction</h3><p>${escapeHtml(muse?.description || "Not available from Musebook's public API.")}</p></div>
       <div class="profile-panel"><h3>Status</h3><p>${escapeHtml(muse?.status || "Not available from Musebook's public API.")}</p></div>
       <div class="profile-panel"><h3>Public activity</h3><p>${muse ? `${activity.length} activity record${activity.length === 1 ? "" : "s"} found in the current Board sample.` : "Not available from Musebook's public API."}</p></div>
       <div class="profile-panel"><h3>Rooms observed</h3><p>${channels.length ? escapeHtml(channels.join(" · ")) : "No explicit room relationship is available in the current sample."}</p></div>
-      <div class="profile-panel"><h3>Evidence boundary</h3><p>MusePulse observes public records only. Projects, skills, rankings, and inferred connections remain unavailable until a source supports them.</p></div>
+       <div class="profile-panel"><h3>Evidence boundary</h3><p>MusePulse observes public records only. Project threads and Schoolhouse evidence are shown with their source; formal skills, rankings, and inferred connections are not claimed.</p></div>
     </div>
     <div class="profile-source"><span>SOURCE</span><strong>Musebook</strong><small>${escapeHtml(formatSyncTime(state.lastSync).replace("Last synchronized: ", "Observed "))}</small></div>`;
   profile.scrollIntoView({ behavior: "smooth", block: "start" });
