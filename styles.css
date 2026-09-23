@@ -703,7 +703,7 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
 }
 
 /* Graph observatory: the panel is a visual instrument, not an empty SVG box. */
-.radar-section > .radar-panel { min-height: 570px; isolation: isolate; }
+main > .section-block.radar-section[data-view="graph"] > .radar-panel { min-height: 570px; isolation: isolate; }
 .radar-panel::after { position: absolute; inset: 0; z-index: 0; background: radial-gradient(circle at 50% 48%, rgba(125, 235, 224, .08), transparent 28%), linear-gradient(90deg, transparent 49.94%, rgba(219, 226, 255, .08) 50%, transparent 50.06%); content: ""; pointer-events: none; }
 .radar-panel-head { position: absolute; top: 18px; right: 22px; left: 22px; z-index: 4; display: flex; justify-content: space-between; gap: 16px; color: rgba(224, 231, 255, .72); font: 9px var(--mono); letter-spacing: .12em; }
 .radar-panel-head span { display: inline-flex; align-items: center; gap: 8px; }
@@ -746,7 +746,7 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
   .graph-link, .graph-orbit-outer, .graph-orbit-inner, .graph-node-pulse { animation: none; }
 }
 @media (max-width: 680px) {
-  .radar-section > .radar-panel { min-height: 500px; }
+  main > .section-block.radar-section[data-view="graph"] > .radar-panel { min-height: 500px; }
   .radar-panel-head { top: 14px; right: 16px; left: 16px; font-size: 8px; }
   .radar-panel-head strong { display: none; }
   .network-graph { padding: 42px 4px 58px; }
