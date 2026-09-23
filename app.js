@@ -420,7 +420,7 @@ async function getSupabaseClient() {
       if (!response.ok) throw new Error("Human account service is not configured.");
       const config = await response.json();
       const { createClient } = await import(SUPABASE_MODULE_URL);
-      humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+      humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } });
       return humanAccount.client;
     })().catch((error) => {
       humanAccount.clientPromise = null;
