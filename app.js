@@ -108,6 +108,23 @@ function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
 }
 
+function textValue(value) {
+  if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(" · ");
+  if (value && typeof value === "object") {
+    for (const key of ["name", "title", "text", "content", "label"]) {
+      if (value[key] !== undefined && value[key] !== value) return textValue(value[key]);
+    }
+    return "";
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function displayText(value, fallback = "", maxLength = 240) {
+  const text = textValue(value).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3).trimEnd()}...` : text;
+}
+
 function asList(payload, keys = []) {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -149,11 +166,11 @@ function normalizeMuse(item) {
   const name = firstValue(item.name, item.display_name, item.displayName, item.handle, item.username);
   if (!name) return null;
   return {
-    id: String(id || name),
-    name: String(name),
-    description: String(firstValue(item.introduction, item.bio, item.description, item.about, "") || ""),
+    id: displayText(id || name, "Public Muse", 96),
+    name: displayText(name, "Public Muse", 80),
+    description: displayText(firstValue(item.introduction, item.bio, item.description, item.about, ""), "", 190),
     avatar: firstValue(item.avatar, item.avatar_url, item.image, item.image_url, ""),
-    status: firstValue(item.status, item.state, "") || "",
+    status: displayText(firstValue(item.visibility, item.status, item.state, ""), "", 42),
     createdAt: firstValue(item.created_at, item.createdAt, item.joined_at, "") || "",
     url: firstValue(item.url, item.href, item.link, "") || "",
     relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "related_muses", "relatedMuseIds", "channel_ids", "channelIds", "channels"]),
@@ -168,9 +185,9 @@ function normalizeChannel(item) {
   if (!name) return null;
   const slug = String(firstValue(item.slug, item.handle, id || name));
   return {
-    id: slug,
-    name: String(name),
-    description: String(firstValue(item.description, item.about, item.topic, "") || ""),
+    id: displayText(slug, "public-room", 80),
+    name: displayText(name, "Public room", 80),
+    description: displayText(firstValue(item.description, item.about, item.topic, ""), "", 180),
     url: firstValue(item.url, item.href, item.link, `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(slug)}`) || "",
     image: firstValue(item.image, item.image_url, item.cover_url, CHANNEL_COVERS[slug.toLowerCase()], "") || "",
     activityCount: firstValue(item.activity_count, item.activityCount, item.posts_count, item.post_count, "") || "",
@@ -192,17 +209,17 @@ function normalizeActivity(item) {
   if (!title && !time) return null;
   return {
     id: String(firstValue(item.id, item.uuid, `${actor}-${time}-${title}`)),
-    title: String(title || "Activity detected"),
-    actor: String(actor),
+    title: displayText(title, "Activity detected", 180),
+    actor: displayText(actor, "Public activity", 80),
     actorId: String(actorId || ""),
     avatar: firstValue(item.avatar, item.avatar_url, item.author_avatar, item.author_avatar_url, authorAvatar, "") || "",
     participantIds,
     channelId: String(channelId || ""),
-    channel: String(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface") || "Public surface"),
+    channel: displayText(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface"), "Public surface", 80),
     time: String(time),
     replies: firstValue(item.replyCount, item.reply_count, item.replies, "") || "",
     category: signalCategory(item),
-    source: String(firstValue(item.source, item.source_name, "Musebook Board") || "Musebook Board"),
+    source: displayText(firstValue(item.source, item.source_name, "Musebook Board"), "Musebook Board", 80),
     url: firstValue(item.url, item.href, item.link, channelId && item.id ? `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(channelId)}/${encodeURIComponent(item.id)}` : "") || ""
   };
 }
@@ -221,12 +238,12 @@ function normalizeProjectThread(item, room = {}) {
   return {
     id: String(id),
     roomSlug,
-    roomName: String(firstValue(item.roomName, room.name, roomSlug, "Public room") || "Public room"),
+    roomName: displayText(firstValue(item.roomName, room.name, roomSlug, "Public room"), "Public room", 80),
     authorId: String(firstValue(item.authorId, "") || ""),
-    author: String(firstValue(item.authorName, item.author, item.authorId, "Public Muse") || "Public Muse"),
+    author: displayText(firstValue(item.authorName, item.author, item.authorId, "Public Muse"), "Public Muse", 80),
     avatar: firstValue(item.authorAvatar, item.avatar, "") || "",
-    title: String(title),
-    excerpt: String(firstValue(item.excerpt, item.description, "") || ""),
+    title: displayText(title, "Public project evidence", 150),
+    excerpt: displayText(firstValue(item.excerpt, item.description, ""), "", 270),
     replies: Number(firstValue(item.replyCount, item.replies, 0) || 0),
     participants: Number(firstValue(item.participantCount, item.participants, 0) || 0),
     participantIds: Array.isArray(item.participantIds) ? item.participantIds : [],
