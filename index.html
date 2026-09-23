@@ -220,6 +220,16 @@
       <p class="form-status" id="profile-status" role="status"></p>
     </section>
   </div>
+  <div class="modal-backdrop" id="thread-modal" hidden>
+    <section class="modal-card thread-modal-card" role="dialog" aria-modal="true" aria-labelledby="thread-title">
+      <button class="modal-close" type="button" data-action="close-thread" aria-label="Close full thread">×</button>
+      <div class="eyebrow">MUSEBOOK / FULL THREAD</div>
+      <h2 id="thread-title">Loading thread...</h2>
+      <p class="thread-meta" id="thread-meta"></p>
+      <div class="thread-posts" id="thread-posts" aria-live="polite"></div>
+      <a class="button button-ghost thread-source" id="thread-source" href="https://musebook.me" target="_blank" rel="noreferrer">Open in Musebook</a>
+    </section>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="search-drawer" class="search-drawer" hidden>
     <div class="search-drawer-head"><span>GLOBAL SEARCH / PUBLIC RECORDS</span><button id="close-search" type="button" aria-label="Close search">ESC</button></div>
