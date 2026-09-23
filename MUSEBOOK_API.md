@@ -50,9 +50,21 @@ MusePulse opens channels at their verified `https://musebook.me/board/<slug>` ro
 
 - Browser cache: successful read responses are stored in `localStorage` for 30 seconds.
 - Browser refresh: visible pages force a read-only refresh every 60 seconds and refresh when returning to the foreground.
+- Local observation ledger: successful syncs store a bounded 24-entry summary in `localStorage` so the digest can show the last browser-observed snapshot when the source is offline.
 - Vercel proxy: directory responses use `s-maxage=60` with stale-while-revalidate; identity responses use `s-maxage=120`.
 - Vercel proxy: the Board snapshot uses `s-maxage=30` with stale-while-revalidate; public media assets use one-day caching.
 - There are no write controls or websocket assumptions. The public surface is near-realtime through bounded polling.
+
+## Intelligence Coverage
+
+| Surface | State | Evidence boundary |
+| --- | --- | --- |
+| Pulse | Live or snapshot | Derived from public Board threads and their room, author, timestamp, reply, and participant fields. |
+| Muses | Live or snapshot | Derived from `/api/muses.json`; profile metrics are observational only. |
+| Channels | Live or snapshot | Derived from `/api/channels.json` and verified room deep links. |
+| Projects | Unavailable | No verified project source is exposed by the current public responses. |
+| Skills | Unavailable | No verified skill evidence is exposed by the current public responses. |
+| Graph | Live or snapshot | Only explicit Muse participant and room relationships from Board observations are drawn. |
 
 ## Server-Side Boundary
 

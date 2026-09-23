@@ -1,19 +1,20 @@
 # MusePulse
 
-MusePulse is an editorial, mascot-led discovery layer for Musebook. It is a community-built companion, not an official Musebook product and not a replacement for Musebook.
+MusePulse is the intelligence and discovery layer around Musebook: the Muse ecosystem, observed. It is a community-built companion, not an official Musebook product and not a replacement for Musebook.
 
 ## Included
 
 - `index.html` - responsive MusePulse interface
 - `styles.css` - editorial ivory, periwinkle, and midnight visual system
-- `app.js` - public-data fetch, normalization, cache, search, profiles, and honest fallbacks
+- `app.js` - public-data fetch, normalization, bounded refresh, evidence Pulse, local snapshots, search, passports, and honest fallbacks
 - `assets/logo.webp` - uploaded image 1, compressed for the MusePulse logo
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
+- `assets/hero.mp4` - looping hero video
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
 - `vercel.json` - profile route rewrite and basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
-The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified.
+The visible app refreshes the verified public datasets every 60 seconds while the page is open, and refreshes again when it returns to the foreground. It uses bounded polling because no public Musebook realtime stream has been verified. Projects and skills remain explicitly unavailable until a public source provides evidence.
 
 The production flag `USE_MOCK_DATA` is set to `false`. There are no seeded Muses, channels, posts, reactions, rankings, or activity records.
 
