@@ -62,6 +62,7 @@ const CREATE_DEFINITIONS = {
     submitLabel: "SAVE PROJECT + PUBLISH",
     fields: [
       ["name", "Project name", "text", "", true],
+      ["logo_file", "Project image", "file", "JPG, PNG, WEBP, GIF · max 5 MB", false],
       ["slug", "Slug", "text", "auto-generated if blank", false],
       ["description", "Description", "textarea", "What are you building?", true],
       ["website_url", "Website", "url", "https://...", false],
@@ -79,6 +80,7 @@ const CREATE_DEFINITIONS = {
     submitLabel: "SAVE TOOL + PUBLISH",
     fields: [
       ["name", "Tool name", "text", "", true],
+      ["image_file", "Tool image", "file", "JPG, PNG, WEBP, GIF · max 5 MB", false],
       ["slug", "Slug", "text", "auto-generated if blank", false],
       ["description", "Description", "textarea", "What does it help someone do?", true],
       ["url", "Tool URL", "url", "https://...", true],
@@ -95,6 +97,7 @@ const CREATE_DEFINITIONS = {
     submitLabel: "SAVE SIGNAL + PUBLISH",
     fields: [
       ["title", "Signal title", "text", "", true],
+      ["image_file", "Signal image", "file", "JPG, PNG, WEBP, GIF · max 5 MB", false],
       ["description", "What did you observe?", "textarea", "Keep the claim specific and sourced.", true],
       ["source_url", "Source URL", "url", "https://...", true],
       ["category", "Category", "select", ["DISCOVERY", "BUILD", "ECOSYSTEM", "PROJECT", "SKILL", "DISCUSSION"], true],
@@ -571,9 +574,9 @@ async function loadCommunityData() {
   try {
     const client = await getSupabaseClient();
     const [projects, tools, signals] = await Promise.all([
-      client.from("projects").select("id,name,slug,description,website_url,github_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
-      client.from("tools").select("id,name,slug,description,url,category,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
-      client.from("signals").select("id,title,description,source_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18)
+      client.from("projects").select("id,name,slug,description,logo_url,website_url,github_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
+      client.from("tools").select("id,name,slug,description,image_url,url,category,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
+      client.from("signals").select("id,title,description,image_url,source_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18)
     ]);
     const firstError = [projects, tools, signals].find((result) => result.error)?.error;
     if (firstError) throw firstError;
@@ -590,9 +593,10 @@ function publicCommunityCard(type, record) {
   const title = record.name || record.title || "Untitled public record";
   const description = record.description || "No description added yet.";
   const source = safeExternalUrl(record.musebook_post_url) || safeExternalUrl(record.website_url) || safeExternalUrl(record.url) || safeExternalUrl(record.source_url);
+  const image = safeExternalUrl(type === "project" ? record.logo_url : record.image_url);
   const meta = type === "project" ? [record.category || "PROJECT", record.status || "ACTIVE"] : type === "tool" ? [record.category || "TOOL", "PUBLIC"] : [record.category || "DISCOVERY", "PUBLISHED"];
   const saveType = type === "project" ? "project" : type === "tool" ? "tool" : "signal";
-  return `<article class="community-card"><div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
+  return `<article class="community-card">${image ? `<img class="community-card-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
 }
 
 function renderCommunityCollection(target, type, records, emptyCopy) {
@@ -755,6 +759,7 @@ function createFieldMarkup([name, label, type, detail, required]) {
   const hint = typeof detail === "string" && detail ? ` <span>${escapeHtml(detail)}</span>` : "";
   if (type === "textarea") return `<label class="${wide ? "profile-form-wide" : ""}">${escapeHtml(label)}${hint}<textarea name="${escapeHtml(name)}" rows="3" maxlength="1000" placeholder="${escapeHtml(detail || "")}"${requiredAttr}></textarea></label>`;
   if (type === "select") return `<label>${escapeHtml(label)}<select name="${escapeHtml(name)}"${requiredAttr}>${detail.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></label>`;
+  if (type === "file") return `<label>${escapeHtml(label)}${hint}<input name="${escapeHtml(name)}" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label>`;
   return `<label class="${wide ? "profile-form-wide" : ""}">${escapeHtml(label)}${hint}<input name="${escapeHtml(name)}" type="${escapeHtml(type)}" maxlength="500" placeholder="${escapeHtml(typeof detail === "string" ? detail : "")}"${requiredAttr}></label>`;
 }
 
@@ -771,6 +776,7 @@ function renderCreateForm(type) {
   form.innerHTML = `
     <div class="profile-form-grid">
       ${definition.fields.map(createFieldMarkup).join("")}
+      <div class="profile-form-wide create-image-preview" id="create-image-preview" aria-live="polite">No image selected.</div>
       <label>Publish room<select name="channel">${MUSEBOOK_CHANNELS.map((channel) => `<option value="${channel}"${channel === definition.channel ? " selected" : ""}>#${channel}</option>`).join("")}</select></label>
       <label class="profile-form-wide">Musebook post <span>optional, max 300 characters</span><textarea name="post_text" rows="3" maxlength="300" placeholder="A short public note for the town..."></textarea></label>
       <label class="checkbox-label profile-form-wide"><input name="publish" type="checkbox" checked> Publish this submission to Musebook now</label>
@@ -784,11 +790,14 @@ function renderCreateForm(type) {
 async function createWorkspaceRecord(type, values) {
   const definition = CREATE_DEFINITIONS[type];
   const client = await getSupabaseClient();
+  const imageFile = values.logo_file?.size ? values.logo_file : values.image_file?.size ? values.image_file : null;
+  const imageUrl = imageFile ? await uploadUserMedia(imageFile, `${type}-image`, `${type[0].toUpperCase()}${type.slice(1)} image`) : null;
   const payload = type === "project" ? {
     owner_id: humanAccount.user.id,
     name: values.name.trim(),
     slug: slugify(values.slug || values.name),
     description: values.description.trim(),
+    logo_url: imageUrl,
     website_url: values.website_url.trim() || null,
     github_url: values.github_url.trim() || null,
     category: values.category.trim() || null,
@@ -800,6 +809,7 @@ async function createWorkspaceRecord(type, values) {
     name: values.name.trim(),
     slug: slugify(values.slug || values.name),
     description: values.description.trim(),
+    image_url: imageUrl,
     url: values.url.trim(),
     category: values.category,
     tags: listValues(values.tags),
@@ -808,6 +818,7 @@ async function createWorkspaceRecord(type, values) {
     creator_id: humanAccount.user.id,
     title: values.title.trim(),
     description: values.description.trim(),
+    image_url: imageUrl,
     source_url: values.source_url.trim(),
     category: values.category,
     related_muse_id: values.related_muse_id.trim() || null,
@@ -852,7 +863,7 @@ async function handleCreateSubmit(event) {
   }
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
-  setFormStatus("#create-status", "Saving to your MusePulse workspace...");
+  setFormStatus("#create-status", values.logo_file?.size || values.image_file?.size ? "Uploading image and saving to your MusePulse workspace..." : "Saving to your MusePulse workspace...");
   try {
     const record = await createWorkspaceRecord(type, values);
     state.accountData.userId = null;
@@ -930,18 +941,37 @@ function renderProfileAvatarPreview(url) {
   preview.innerHTML = safeUrl ? `<img src="${escapeHtml(safeUrl)}" alt="Current profile photo"><span>Current public profile photo</span>` : "No profile photo selected.";
 }
 
-async function uploadProfileAvatar(file) {
-  if (!(file instanceof File) || !file.size) return "";
+function validateImageFile(file, label = "Image") {
   const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-  if (!allowed.has(file.type)) throw new Error("Profile photo must be JPG, PNG, WEBP, or GIF.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Profile photo must be smaller than 5 MB.");
+  if (!allowed.has(file.type)) throw new Error(`${label} must be JPG, PNG, WEBP, or GIF.`);
+  if (file.size > 5 * 1024 * 1024) throw new Error(`${label} must be smaller than 5 MB.`);
+}
+
+function renderCreateImagePreview(file) {
+  const preview = $("#create-image-preview");
+  if (!preview) return;
+  if (!file) {
+    preview.textContent = "No image selected.";
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  preview.innerHTML = `<img src="${escapeHtml(url)}" alt="Selected image preview"><span>${escapeHtml(file.name)}</span>`;
+}
+
+async function uploadUserMedia(file, prefix, label = "Image") {
+  if (!(file instanceof File) || !file.size) return "";
+  validateImageFile(file, label);
   const extension = file.type.split("/")[1].replace("jpeg", "jpg");
-  const path = `${humanAccount.user.id}/avatar-${crypto.randomUUID()}.${extension}`;
+  const path = `${humanAccount.user.id}/${prefix}-${crypto.randomUUID()}.${extension}`;
   const { error } = await humanAccount.client.storage.from("user-media").upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
   if (error) throw error;
   const { data } = humanAccount.client.storage.from("user-media").getPublicUrl(path);
-  if (!data?.publicUrl) throw new Error("Profile photo URL could not be created.");
+  if (!data?.publicUrl) throw new Error(`${label} URL could not be created.`);
   return data.publicUrl;
+}
+
+async function uploadProfileAvatar(file) {
+  return uploadUserMedia(file, "avatar", "Profile photo");
 }
 
 function openProfileEditor() {
@@ -1030,9 +1060,10 @@ function accountRecordCard(type, record) {
   const title = record.name || record.title || "Untitled submission";
   const description = record.description || "No description added yet.";
   const id = record.id || "";
+  const image = safeExternalUrl(type === "project" ? record.logo_url : record.image_url);
   const publishUrl = safeExternalUrl(record.musebook_post_url);
   const meta = type === "project" ? [record.category || "PROJECT", record.status || "IDEA"] : type === "tool" ? [record.category || "OTHER", record.url || "LINK NOT ADDED"] : [record.category || "DISCOVERY", record.status || "COMMUNITY SUBMITTED"];
-  return `<article class="account-record-card"><div class="account-record-top"><span class="record-tag">${escapeHtml(type.toUpperCase())}</span><span class="data-badge${record.musebook_publish_status === "published" ? " ready" : " partial"}">${escapeHtml(accountStatusLabel(record))}</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="account-record-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div>${publishUrl ? `<div class="account-record-actions"><a class="text-link" href="${escapeHtml(publishUrl)}" target="_blank" rel="noreferrer">OPEN MUSEBOOK POST</a></div>` : ""}</article>`;
+  return `<article class="account-record-card">${image ? `<img class="account-record-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="account-record-top"><span class="record-tag">${escapeHtml(type.toUpperCase())}</span><span class="data-badge${record.musebook_publish_status === "published" ? " ready" : " partial"}">${escapeHtml(accountStatusLabel(record))}</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="account-record-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div>${publishUrl ? `<div class="account-record-actions"><a class="text-link" href="${escapeHtml(publishUrl)}" target="_blank" rel="noreferrer">OPEN MUSEBOOK POST</a></div>` : ""}</article>`;
 }
 
 function accountListMarkup(type, records, emptyTitle, emptyCopy, createType) {
@@ -1047,9 +1078,9 @@ async function loadAccountData() {
   try {
     const userId = humanAccount.user.id;
     const [projects, tools, signals, saved] = await Promise.all([
-      humanAccount.client.from("projects").select("id,name,slug,description,website_url,github_url,category,status,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
-      humanAccount.client.from("tools").select("id,name,slug,description,url,category,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
-      humanAccount.client.from("signals").select("id,title,description,source_url,category,status,related_muse_id,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("creator_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("projects").select("id,name,slug,description,logo_url,website_url,github_url,category,status,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("tools").select("id,name,slug,description,image_url,url,category,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
+      humanAccount.client.from("signals").select("id,title,description,image_url,source_url,category,status,related_muse_id,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("creator_id", userId).order("created_at", { ascending: false }),
       humanAccount.client.from("saved_items").select("id,object_type,object_id,created_at").eq("user_id", userId).order("created_at", { ascending: false })
     ]);
     const firstError = [projects, tools, signals, saved].find((result) => result.error)?.error;
@@ -1775,11 +1806,32 @@ function wireEvents() {
     renderCreateForm(createType.dataset.createType);
   });
   $("#create-form").addEventListener("submit", handleCreateSubmit);
+  $("#create-form").addEventListener("change", (event) => {
+    if (event.target.type !== "file") return;
+    const file = event.target.files?.[0];
+    if (!file) return renderCreateImagePreview(null);
+    try {
+      validateImageFile(file, "Submission image");
+      renderCreateImagePreview(file);
+      setFormStatus("#create-status", "Image ready. Submit when the rest of the record is complete.");
+    } catch (error) {
+      event.target.value = "";
+      renderCreateImagePreview(null);
+      setFormStatus("#create-status", error.message, true);
+    }
+  });
   $("#musebook-identity-form").addEventListener("submit", handleMusebookIdentitySubmit);
   $("#profile-form").addEventListener("change", (event) => {
     if (event.target.name !== "avatar_file" || !event.target.files?.[0]) return;
-    const previewUrl = URL.createObjectURL(event.target.files[0]);
-    renderProfileAvatarPreview(previewUrl);
+    try {
+      validateImageFile(event.target.files[0], "Profile photo");
+      const previewUrl = URL.createObjectURL(event.target.files[0]);
+      renderProfileAvatarPreview(previewUrl);
+    } catch (error) {
+      event.target.value = "";
+      renderProfileAvatarPreview("");
+      setFormStatus("#profile-status", error.message, true);
+    }
   });
   $("#profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
