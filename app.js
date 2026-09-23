@@ -389,8 +389,10 @@ async function requestPublic(path, { force = false } = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 7000);
     try {
-      const response = await fetch(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}`, {
+      const syncQuery = `&sync=${Date.now()}`;
+      const response = await fetch(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}${syncQuery}`, {
         headers: { Accept: "application/json" },
+        cache: "no-store",
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -625,6 +627,50 @@ function authUsername() {
   return humanAccount.profile?.username || humanAccount.user?.user_metadata?.user_name || humanAccount.user?.email?.split("@")[0] || "human";
 }
 
+function isXAccount() {
+  const provider = humanAccount.user?.app_metadata?.provider;
+  return provider === "x" || provider === "twitter";
+}
+
+function normalizedProfileUsername(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/^@+/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 32);
+  return normalized.length >= 3 ? normalized : "";
+}
+
+async function syncOAuthProfile(existingProfile = {}) {
+  if (!humanAccount.client || !humanAccount.user || !isXAccount()) return existingProfile;
+  const metadata = humanAccount.user.user_metadata || {};
+  const handle = firstValue(metadata.user_name, metadata.preferred_username, metadata.username, metadata.screen_name, "");
+  const displayName = firstValue(metadata.full_name, metadata.name, metadata.display_name, "");
+  const avatarUrl = firstValue(metadata.avatar_url, metadata.picture, metadata.profile_image_url, "");
+  const username = normalizedProfileUsername(handle || displayName || humanAccount.user.email?.split("@")[0]);
+  const payload = {
+    id: humanAccount.user.id,
+    username: username || existingProfile.username || normalizedProfileUsername(authUsername()) || "human",
+    display_name: displayName || existingProfile.display_name || null,
+    avatar_url: avatarUrl || existingProfile.avatar_url || null,
+    x_handle: handle ? `@${String(handle).replace(/^@+/, "")}` : existingProfile.x_handle || null,
+    bio: existingProfile.bio || null,
+    website: existingProfile.website || null,
+    location: existingProfile.location || null,
+    interests: Array.isArray(existingProfile.interests) ? existingProfile.interests : [],
+    skills: Array.isArray(existingProfile.skills) ? existingProfile.skills : []
+  };
+  let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+  if (result.error && username && result.error.code === "23505") {
+    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(humanAccount.user.email?.split("@")[0]) || "human" };
+    result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+  }
+  if (result.error) throw result.error;
+  return result.data || payload;
+}
+
 function setFormStatus(selector, message, isError = false) {
   const element = $(selector);
   if (!element) return;
@@ -665,6 +711,13 @@ async function loadHumanProfile() {
   } else {
     humanAccount.profile = data;
     humanAccount.status = "signed_in";
+  }
+  if (humanAccount.status === "signed_in" && isXAccount()) {
+    try {
+      humanAccount.profile = await syncOAuthProfile(humanAccount.profile || {});
+    } catch (error) {
+      humanAccount.error = error.message || "X profile sync unavailable.";
+    }
   }
   renderAuthShell();
   renderWorkspace(true);
@@ -718,6 +771,7 @@ function authRedirectUrl() {
 
 async function oauthProviderEnabled(provider) {
   if (humanAccount.oauthProviders && Object.hasOwn(humanAccount.oauthProviders, provider)) return humanAccount.oauthProviders[provider];
+  if (provider === "x") return true;
   const config = humanAccount.config || await getSupabaseClient().then(() => humanAccount.config);
   const response = await fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}` } });
   if (!response.ok) throw new Error("Unable to check OAuth provider availability.");
@@ -1789,7 +1843,7 @@ function wireEvents() {
     }
     if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
       event.preventDefault();
-      const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
+       const provider = action.dataset.action === "oauth-google" ? "google" : "x";
       setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
         if (!await oauthProviderEnabled(provider)) throw new Error(`${provider === "google" ? "Google" : "X"} sign-in needs its OAuth app credentials in Supabase.`);
