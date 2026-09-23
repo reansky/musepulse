@@ -597,9 +597,19 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
 .workspace-panel h3 { margin: 0 0 12px; color: var(--muted); font: 9px var(--mono); letter-spacing: .12em; }
 .workspace-panel p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .workspace-panel .text-link { display: inline-block; margin-top: 18px; }
+.thread-meta { margin: 8px 0 18px; color: var(--muted); font: 10px/1.5 var(--mono); }
+.thread-posts { min-height: 0; overflow-y: auto; padding: 3px 8px 10px 0; scrollbar-color: #a7b9ed transparent; scrollbar-width: thin; }
+.thread-posts::-webkit-scrollbar { width: 8px; }
+.thread-posts::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: #a7b9ed; background-clip: padding-box; }
+.thread-post { margin: 0 0 10px clamp(0px, calc(var(--thread-depth) * 22px), 66px); padding: 16px 17px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, .68); }
+.thread-post-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: var(--muted); font: 9px var(--mono); }
+.thread-post-author { color: var(--ink); font: 600 12px var(--sans); }
+.thread-post-body { color: var(--ink-soft); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.thread-source { align-self: flex-start; flex: 0 0 auto; margin-top: 8px; }
 .modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(14, 19, 48, .42); backdrop-filter: blur(12px); }
 .modal-backdrop[hidden] { display: none; }
 .modal-card { position: relative; width: min(100%, 500px); padding: 31px; border: 1px solid rgba(255, 255, 255, .7); border-radius: 24px; background: linear-gradient(145deg, #fff, #f1f3ff); box-shadow: 0 28px 70px rgba(18, 26, 73, .26); }
+.thread-modal-card { display: flex; flex-direction: column; width: min(100%, 820px); max-height: min(88vh, 900px); }
 .modal-card h2 { max-width: 390px; margin-top: 12px; font-size: clamp(34px, 6vw, 52px); }
 .modal-close { position: absolute; top: 13px; right: 16px; width: 33px; height: 33px; border: 0; border-radius: 50%; background: rgba(225, 229, 247, .8); color: var(--ink-soft); cursor: pointer; font-size: 23px; line-height: 1; }
 .modal-copy { max-width: 410px; margin: 14px 0 22px; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
@@ -674,6 +684,7 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
   .evidence-card-featured { grid-column: auto; }
   .workspace-grid, .workspace-panels { grid-template-columns: 1fr; }
   .modal-card { padding: 25px 20px; }
+  .thread-modal-card { max-height: 92vh; }
   .oauth-actions { grid-template-columns: 1fr; }
   .profile-form-grid { grid-template-columns: 1fr; }
   .profile-form-wide { grid-column: auto; }
