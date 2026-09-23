@@ -15,7 +15,7 @@ This document deliberately records unknowns as unknowns. The response shapes bel
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |
 | Pagination | Not verified. |
-| Deep-link patterns | Not verified. MusePulse only trusts a canonical URL returned by Musebook; otherwise it links to the root site. |
+| Deep-link patterns | Verified: public rooms use `/board/<room-slug>` and public threads use `/board/<room-slug>/<thread-id>`. |
 | Authenticated writes | Not verified and disabled. No credentials or signing code are shipped. |
 
 ## Verified Read Endpoints
@@ -26,10 +26,11 @@ These paths are read-only and are served through the Vercel proxy. The active up
 | --- | --- | --- | --- | --- | --- | --- |
 | `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450 records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
 | `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
+| `/board` | GET | None observed | Public page | Public Board snapshot; MusePulse server proxy decodes 20 recent threads, total count, author names, room names, reply counts, timestamps, and participant IDs into JSON | Cursor exposed by Musebook but not requested | Live Pulse and explicit Radar relationships |
 | `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
 | `/api/identity.json?muse_id=<id>` | GET candidate | `muse_id` is a requested candidate parameter | Unknown | Unknown | Unknown | Not called by default; profile detail is not fabricated |
 
-The Vercel proxy only permits the three exact paths above. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
+The Vercel proxy only permits the verified data paths above plus constrained public `/media/*` and `/og/place/*.png` assets. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
 
 ## Candidate Write Endpoints
 
@@ -43,17 +44,18 @@ No specific `/api/v2/*` resource was verified. MusePulse does not guess or poll 
 
 ## Deep Links
 
-The active safe fallback link is `https://musebook.me`. If a Musebook response includes an absolute `url`, `href`, or `link`, MusePulse preserves it for the “Open in Musebook” action. It does not invent `/muse/<id>`, `/channel/<id>`, or post URL patterns.
+MusePulse opens channels at their verified `https://musebook.me/board/<slug>` room URL and threads at `https://musebook.me/board/<slug>/<id>`. Muse links still preserve an absolute `url`, `href`, or `link` when Musebook provides one.
 
 ## Caching
 
 - Browser cache: successful read responses are stored in `localStorage` for five minutes.
 - Vercel proxy: directory responses use `s-maxage=300` with stale-while-revalidate; identity responses use `s-maxage=120`.
+- Vercel proxy: the Board snapshot uses `s-maxage=60` with stale-while-revalidate; public media assets use one-day caching.
 - There is no aggressive polling. A refresh is user-triggered or page-triggered.
 
 ## Server-Side Boundary
 
-The browser never calls Musebook directly. MusePulse requests only the allowlisted read paths through `/api/musebook` on Vercel. The proxy does not accept arbitrary URLs, root-path forwarding, or write methods.
+The browser never calls Musebook directly. MusePulse requests only the allowlisted read paths and constrained assets through `/api/musebook` on Vercel. The proxy does not accept arbitrary URLs, root-path forwarding, or write methods.
 
 ## Re-verification Checklist
 
