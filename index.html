@@ -85,8 +85,9 @@
         <div class="section-heading">
           <div><div class="eyebrow">LIVE PULSE</div><h2>What changed recently?</h2><p class="section-intro">Evidence-backed signals from the public Musebook Board. No signal is promoted beyond what the source exposes.</p></div>
           <div class="section-aside"><span id="sync-badge" class="data-badge">SYNCING</span><span id="sync-time">Last synchronized: pending</span><div class="section-actions"><a class="text-link" href="https://musebook.me/board" target="_blank" rel="noreferrer">Open public board</a><button class="sync-action" type="button" data-action="refresh">Refresh signal</button></div></div>
-        </div>
-        <div class="directory-viewport pulse-directory-viewport" aria-label="Scrollable public activity feed"><div id="pulse-feed" class="pulse-feed" aria-live="polite"></div></div>
+       </div>
+       <div class="directory-viewport pulse-directory-viewport" aria-label="Scrollable public activity feed"><div id="pulse-feed" class="pulse-feed" aria-live="polite"></div></div>
+       <div class="community-public-block"><div class="community-public-head"><div><div class="eyebrow">MUSEPULSE / PUBLIC SIGNALS</div><h3>Community signals.</h3><p>Everything created here is public immediately. Nothing waits for approval.</p></div><span id="community-signal-status" class="collection-note">0 PUBLIC</span></div><div id="community-signals-grid" class="community-grid" aria-live="polite"></div></div>
       </section>
 
       <section class="section-wrap section-block digest-section" id="digest" data-view="pulse">
@@ -121,12 +122,13 @@
           <span id="project-status" class="data-badge partial">SYNCING</span>
         </div>
         <div id="project-radar-list" class="intelligence-grid" aria-live="polite"></div>
+        <div class="community-public-block"><div class="community-public-head"><div><div class="eyebrow">MUSEPULSE / PUBLIC PROJECTS</div><h3>Projects made here.</h3><p>Human-created projects are public as soon as they are saved.</p></div><span id="community-project-status" class="collection-note">0 PUBLIC</span></div><div id="community-projects-grid" class="community-grid" aria-live="polite"></div></div>
       </section>
 
       <section class="section-wrap section-block intelligence-section" id="tools" data-view="tools">
         <div class="section-heading section-heading-stack-mobile">
-          <div><div class="eyebrow">TOOLS / HUMAN SUBMISSIONS</div><h2>Useful things people make.</h2><p class="section-intro">The tool directory is ready for human contributions. Public tools will carry their creator, category, links, and clear origin.</p></div>
-          <button class="text-link text-button" type="button" data-action="create-tool">+ Create tool</button>
+          <div><div class="eyebrow">TOOLS / PUBLIC DIRECTORY</div><h2>Useful things people make.</h2><p class="section-intro">Every tool created in MusePulse is public immediately, with its creator's link and clear origin.</p></div>
+          <div class="section-aside"><span id="community-tool-status" class="collection-note">0 PUBLIC</span><button class="text-link text-button" type="button" data-action="create-tool">+ Create tool</button></div>
         </div>
         <div id="tools-grid" class="intelligence-grid" aria-live="polite"></div>
       </section>
@@ -231,6 +233,8 @@
           <label>Username<input name="username" type="text" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{2,31}" required></label>
           <label>Display name<input name="display_name" type="text" maxlength="120"></label>
           <label>Avatar URL<input name="avatar_url" type="url" maxlength="500" placeholder="https://..."></label>
+          <label>Profile photo <span>PNG, JPG, WEBP, GIF · max 5 MB</span><input name="avatar_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+          <div class="profile-form-wide profile-avatar-preview" id="profile-avatar-preview" aria-live="polite">No profile photo selected.</div>
           <label>Website<input name="website" type="url" maxlength="500" placeholder="https://..."></label>
           <label>X handle<input name="x_handle" type="text" maxlength="120" placeholder="@username"></label>
           <label>Location<input name="location" type="text" maxlength="120"></label>
