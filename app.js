@@ -6,7 +6,8 @@ const CONFIG = {
   CACHE_TTL: 5 * 60 * 1000,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
-    { path: "/api/channels.json", type: "channels" }
+    { path: "/api/channels.json", type: "channels" },
+    { path: "/board", type: "activity" }
   ]
 };
 
@@ -14,6 +15,7 @@ const state = {
   muses: [],
   channels: [],
   activity: [],
+  activityTotal: 0,
   lastSync: null,
   status: "syncing",
   endpointStatus: { muses: "syncing", channels: "syncing" },
@@ -133,21 +135,29 @@ function normalizeChannel(item) {
 function normalizeActivity(item) {
   if (!item || typeof item !== "object") return null;
   const title = firstValue(item.title, item.text, item.content, item.message, item.type);
-  const actor = firstValue(item.muse_name, item.museName, item.author_name, item.author, item.muse, "Public activity");
-  const time = firstValue(item.created_at, item.createdAt, item.timestamp, item.time, "");
+  const actorId = firstValue(item.actorId, item.authorId, item.author_id, item.muse_id, item.museId, "");
+  const authorObject = item.author && typeof item.author === "object" ? item.author.name : "";
+  const actor = firstValue(item.actor, item.muse_name, item.museName, item.author_name, authorObject, item.author, item.muse, actorId, "Public activity");
+  const time = firstValue(item.lastReplyAt, item.last_reply_at, item.created_at, item.createdAt, item.timestamp, item.time, "");
+  const channelId = firstValue(item.channel_id, item.channelId, item.roomSlug, item.room_slug, "");
+  const participantIds = relationIds(item, ["participantIds", "participant_ids"]);
   if (!title && !time) return null;
   return {
     id: String(firstValue(item.id, item.uuid, `${actor}-${time}-${title}`)),
     title: String(title || "Activity detected"),
     actor: String(actor),
-    channel: String(firstValue(item.channel_name, item.channelName, item.channel, "Public surface") || "Public surface"),
+    actorId: String(actorId || ""),
+    participantIds,
+    channelId: String(channelId || ""),
+    channel: String(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface") || "Public surface"),
     time: String(time),
-    url: firstValue(item.url, item.href, item.link, "") || ""
+    replies: firstValue(item.replyCount, item.reply_count, item.replies, "") || "",
+    url: firstValue(item.url, item.href, item.link, channelId && item.id ? `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(channelId)}/${encodeURIComponent(item.id)}` : "") || ""
   };
 }
 
 function unwrapActivity(payload) {
-  const roots = asList(payload, ["activity", "activities", "events", "posts", "items"]);
+  const roots = asList(payload, ["threads", "activity", "activities", "events", "posts", "items"]);
   return roots.map(normalizeActivity).filter(Boolean);
 }
 
@@ -265,6 +275,8 @@ function setSyncUi() {
   const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available${hasStale ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
+  $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} THREADS` : state.status === "syncing" ? "--" : "0";
+  $("#metric-activity-copy").textContent = state.activityTotal ? `${state.activityTotal} public board threads` : "public board sample";
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
   $("#hero-sync-copy").textContent = isReady ? hasStale ? "Showing last known public data while Musebook reconnects." : `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
@@ -288,7 +300,7 @@ function renderPulse() {
     <article class="pulse-row">
       <time class="pulse-time">${escapeHtml(formatTime(event.time))}</time>
       <div class="pulse-signal"><span class="pulse-glyph">↗</span><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
-      <span class="pulse-context">${escapeHtml(event.channel)}</span>
+      <span class="pulse-context">${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span>
       <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View on Musebook ↗</a>
     </article>`).join("");
 }
@@ -342,15 +354,26 @@ function renderChannels() {
 
 function renderRadar() {
   const graph = $("#network-graph");
-  const nodes = [...state.muses.slice(0, 8).map((muse) => ({ ...muse, kind: "muse" })), ...state.channels.slice(0, 5).map((channel) => ({ ...channel, kind: "channel" }))];
-  const byKey = new Map(nodes.flatMap((node) => [[String(node.id), node], [String(node.name).toLowerCase(), node]]));
+  const musesById = new Map(state.muses.map((muse) => [String(muse.id), { ...muse, kind: "muse" }]));
+  const channelsById = new Map(state.channels.map((channel) => [String(channel.id), { ...channel, kind: "channel" }]));
+  const linkedMuseIds = [...new Set(state.activity.flatMap((event) => [event.actorId, ...(event.participantIds || [])]).filter((id) => musesById.has(String(id))))];
+  const linkedChannelIds = [...new Set(state.activity.map((event) => event.channelId).filter((id) => channelsById.has(String(id))))];
+  const nodes = [...linkedMuseIds.slice(0, 8).map((id) => musesById.get(String(id))), ...linkedChannelIds.slice(0, 5).map((id) => channelsById.get(String(id)))].filter(Boolean);
+  const nodeKeys = new Set(nodes.map((node) => `${node.kind}:${node.id}`));
   const links = [];
-  for (const node of nodes) {
-    for (const relationId of node.relationIds || []) {
-      const target = byKey.get(String(relationId)) || byKey.get(String(relationId).toLowerCase());
-      if (!target || target === node) continue;
-      const key = [String(node.id), String(target.id)].sort().join("::");
-      if (!links.some((link) => link.key === key)) links.push({ key, source: node, target });
+  const addLink = (source, target) => {
+    if (!source || !target || source === target) return;
+    const key = [`${source.kind}:${source.id}`, `${target.kind}:${target.id}`].sort().join("::");
+    if (!links.some((link) => link.key === key)) links.push({ key, source, target });
+  };
+  for (const event of state.activity) {
+    const people = [...new Set([event.actorId, ...(event.participantIds || [])])]
+      .map((id) => musesById.get(String(id)))
+      .filter((muse) => muse && nodeKeys.has(`muse:${muse.id}`));
+    const channel = channelsById.get(String(event.channelId));
+    if (channel && nodeKeys.has(`channel:${channel.id}`)) people.forEach((person) => addLink(person, channel));
+    for (let index = 0; index < people.length; index += 1) {
+      for (let next = index + 1; next < people.length; next += 1) addLink(people[index], people[next]);
     }
   }
   if (nodes.length < 2 || !links.length) {
@@ -418,6 +441,7 @@ function extractMuseActivity(rawItems) {
 async function loadData() {
   state.status = "syncing";
   state.errors = [];
+  state.activityTotal = 0;
   state.endpointStatus = Object.fromEntries(CONFIG.ENDPOINTS.map((endpoint) => [endpoint.type, "syncing"]));
   renderAll();
   if (CONFIG.USE_MOCK_DATA) {
@@ -436,7 +460,7 @@ async function loadData() {
     const endpoint = CONFIG.ENDPOINTS[index];
     if (result.status === "fulfilled") {
       successfulEndpoints += 1;
-       const { type, value, stale, syncedAt } = result.value;
+        const { type, value, stale, syncedAt } = result.value;
        state.endpointStatus[type] = stale ? "stale" : "ready";
        if (syncedAt) syncTimes.push(syncedAt);
       if (type === "muses" || type === "identity") {
@@ -448,6 +472,10 @@ async function loadData() {
         const items = recordsFrom(value, ["channels", "rooms", "items"]);
         rawChannels.push(...items);
         rawActivity.push(...unwrapActivity(value));
+      }
+      if (type === "activity") {
+        rawActivity.push(...unwrapActivity(value));
+        state.activityTotal = Number(value.total || value.page?.total || 0);
       }
     } else {
       if (endpoint) state.endpointStatus[endpoint.type] = "error";
