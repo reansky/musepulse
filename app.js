@@ -42,6 +42,8 @@ const state = {
 const humanAccount = {
   client: null,
   clientPromise: null,
+  config: null,
+  oauthProviders: null,
   session: null,
   user: null,
   profile: null,
@@ -478,8 +480,9 @@ async function getSupabaseClient() {
     humanAccount.clientPromise = (async () => {
       const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("Human account service is not configured.");
-      const config = await response.json();
-      const { createClient } = await import(SUPABASE_MODULE_URL);
+       const config = await response.json();
+       humanAccount.config = config;
+       const { createClient } = await import(SUPABASE_MODULE_URL);
        humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
       return humanAccount.client;
     })().catch((error) => {
@@ -711,6 +714,16 @@ function openAuthModal(message = "") {
 
 function authRedirectUrl() {
   return new URL("/workspace", window.location.origin).href;
+}
+
+async function oauthProviderEnabled(provider) {
+  if (humanAccount.oauthProviders && Object.hasOwn(humanAccount.oauthProviders, provider)) return humanAccount.oauthProviders[provider];
+  const config = humanAccount.config || await getSupabaseClient().then(() => humanAccount.config);
+  const response = await fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}` } });
+  if (!response.ok) throw new Error("Unable to check OAuth provider availability.");
+  const settings = await response.json();
+  humanAccount.oauthProviders = settings.external || {};
+  return humanAccount.oauthProviders[provider] === true;
 }
 
 function closeAuthModal() {
@@ -1779,6 +1792,7 @@ function wireEvents() {
       const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
       setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
+        if (!await oauthProviderEnabled(provider)) throw new Error(`${provider === "google" ? "Google" : "X"} sign-in needs its OAuth app credentials in Supabase.`);
         const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirectUrl() } });
         if (error) throw error;
       }).catch((error) => {
