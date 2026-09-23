@@ -43,13 +43,13 @@
         <a class="topbar-cta" href="https://musebook.me" target="_blank" rel="noreferrer"><span>Visit Musebook</span></a>
       </div>
       <div class="user-menu" id="user-menu" hidden>
-        <a href="#workspace">My Workspace</a>
-        <a href="#projects">My Projects</a>
-        <a href="#tools">My Tools</a>
-        <a href="#pulse">My Signals</a>
-        <a href="#workspace">Saved</a>
-        <a id="my-profile-link" href="#workspace">My Profile</a>
-        <a href="#workspace">Settings</a>
+         <a href="#workspace">My Workspace</a>
+         <a href="#my-projects">My Projects</a>
+         <a href="#my-tools">My Tools</a>
+         <a href="#my-signals">My Signals</a>
+         <a href="#saved">Saved</a>
+         <a id="my-profile-link" href="#my-profile">My Profile</a>
+         <a href="#settings">Settings</a>
         <button type="button" data-action="logout">Log out</button>
       </div>
     </header>
@@ -104,6 +104,8 @@
         </div>
         <div id="workspace-content" class="workspace-content" aria-live="polite"></div>
       </section>
+
+      <section class="section-wrap account-view" id="account-view" data-view="account" hidden aria-live="polite"></section>
 
       <section class="section-wrap section-block" id="muses" data-view="muses">
         <div class="section-heading section-heading-stack-mobile">
