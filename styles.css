@@ -569,9 +569,9 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
 .evidence-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; color: var(--gold); font: 9px var(--mono); letter-spacing: .12em; }
 .evidence-card-top time { color: var(--muted); letter-spacing: 0; white-space: nowrap; }
 .evidence-card-dark .evidence-card-top time { color: rgba(225, 231, 255, .54); }
-.evidence-card h3 { display: -webkit-box; overflow: hidden; margin: 0 0 10px; color: var(--ink); font: 700 18px/1.2 var(--sans); letter-spacing: -.04em; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.evidence-card h3 { margin: 0 0 10px; color: var(--ink); font: 700 18px/1.2 var(--sans); letter-spacing: -.04em; overflow-wrap: anywhere; }
 .evidence-card-dark h3 { color: #f4f6ff; }
-.evidence-card p { display: -webkit-box; overflow: hidden; min-height: 63px; margin: 0 0 18px; color: var(--ink-soft); font-size: 12px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.evidence-card p { min-height: 0; margin: 0 0 18px; color: var(--ink-soft); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .evidence-card-dark p { color: rgba(225, 231, 255, .7); }
 .evidence-card-meta { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: auto; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font: 9px var(--mono); }
 .evidence-card-dark .evidence-card-meta { border-color: rgba(214, 224, 255, .16); color: rgba(225, 231, 255, .62); }
