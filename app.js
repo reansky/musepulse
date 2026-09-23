@@ -2022,7 +2022,7 @@ function routeFromLocation() {
     renderAccountView();
     return;
   }
-  if (window.location.pathname === "/workspace") {
+  if (window.location.pathname === "/workspace" && !hash) {
     state.accountRoute = "workspace";
     setActiveView("account");
     ensureHumanAuth();
