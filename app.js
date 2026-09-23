@@ -1202,7 +1202,14 @@ function setActiveView(view) {
     if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
-  if (view !== null) window.scrollTo(0, 0);
+  if (view !== null) {
+    const root = document.documentElement;
+    const previousBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    root.scrollTop = 0;
+    document.body.scrollTop = 0;
+    root.style.scrollBehavior = previousBehavior;
+  }
 }
 
 function init() {
