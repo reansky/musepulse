@@ -224,17 +224,31 @@ function musebookUrl(record = {}) {
   return CONFIG.MUSEBOOK_ORIGIN;
 }
 
-function publicImageUrl(value) {
-  if (!value) return "";
+function publicImageAsset(value) {
+  if (!value || String(value).includes("..")) return null;
   try {
     const origin = new URL(CONFIG.MUSEBOOK_ORIGIN);
     const asset = new URL(value, origin);
-    const validPath = /^\/(?:media\/[A-Za-z0-9/_-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(asset.pathname);
-    if (asset.origin !== origin.origin || !validPath || asset.pathname.includes("..")) return "";
-    return `${CONFIG.PROXY_PATH}?path=${encodeURIComponent(asset.pathname)}`;
+    const validOrigin = asset.origin === origin.origin || asset.origin === "https://www.musebook.me";
+    const validPath = /^\/(?:media\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(asset.pathname);
+    if (!validOrigin || !validPath || asset.pathname.includes("..")) return null;
+    return {
+      proxy: `${CONFIG.PROXY_PATH}?path=${encodeURIComponent(asset.pathname)}`,
+      direct: `${asset.origin}${asset.pathname}`
+    };
   } catch (error) {
-    return "";
+    return null;
   }
+}
+
+function publicImageUrl(value) {
+  return publicImageAsset(value)?.proxy || "";
+}
+
+function publicImageTag(value, alt = "", loading = "lazy") {
+  const asset = publicImageAsset(value);
+  if (!asset) return "";
+  return `<img src="${escapeHtml(asset.proxy)}" data-fallback="${escapeHtml(asset.direct)}" alt="${escapeHtml(alt)}" loading="${loading}" decoding="async" onerror="if(this.dataset.fallback){const fallback=this.dataset.fallback;this.dataset.fallback='';this.src=fallback;return;}this.parentElement.classList.add('no-image');this.remove();">`;
 }
 
 function recordsFrom(value, keys) {
@@ -306,7 +320,7 @@ function renderPulse() {
   feed.innerHTML = state.activity.slice(0, 12).map((event) => `
     <article class="pulse-row">
       <time class="pulse-time">${escapeHtml(formatTime(event.time))}</time>
-      <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(event.avatar) ? `<img src="${escapeHtml(publicImageUrl(event.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
+      <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(event.avatar, "", "eager")}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
       <span class="pulse-context">${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span>
        <a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View thread</a>
     </article>`).join("");
@@ -327,14 +341,13 @@ function renderMuses() {
     grid.innerHTML = emptyState("MUSES / 00", title, copy, !state.muses.length);
     return;
   }
-  grid.innerHTML = records.map((muse) => `
+  grid.innerHTML = records.map((muse, index) => `
     <article class="muse-card">
       <div class="muse-card-head">
-        <div class="muse-avatar${publicImageUrl(muse.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(muse.name.trim())[0]?.toUpperCase() || "M")}</span>${publicImageUrl(muse.avatar) ? `<img src="${escapeHtml(publicImageUrl(muse.avatar))}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}</div>
-        <div class="muse-card-meta"><span class="record-tag">PUBLIC MUSE</span><span class="muse-card-id">${escapeHtml(muse.id)}</span></div>
+        <div class="muse-avatar${publicImageUrl(muse.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(muse.name.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(muse.avatar, "", index < 36 ? "eager" : "lazy")}</div>
+        <div class="muse-card-meta"><strong class="muse-card-username">${escapeHtml(muse.name)}</strong><span class="muse-card-id">${escapeHtml(muse.id)}</span></div>
         <span class="record-dot"></span>
       </div>
-      <h3 class="card-title">${escapeHtml(muse.name)}</h3>
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
       <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View profile</a></div>
     </article>`).join("");
@@ -349,7 +362,7 @@ function renderChannels() {
   }
   grid.innerHTML = state.channels.map((channel) => `
     <article class="channel-card">
-      <div class="channel-cover"><span class="channel-cover-fallback">◫</span>${publicImageUrl(channel.image) ? `<img src="${escapeHtml(publicImageUrl(channel.image))}" alt="${escapeHtml(channel.name)} public cover" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('no-image')">` : ""}<span class="channel-cover-label">PUBLIC ROOM</span></div>
+      <div class="channel-cover"><span class="channel-cover-fallback">◫</span>${publicImageTag(channel.image, `${channel.name} public cover`, "eager")}<span class="channel-cover-label">PUBLIC ROOM</span></div>
       <div class="channel-card-body">
         <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">CHANNEL / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
         <h3 class="channel-name">${escapeHtml(channel.name)}</h3>
@@ -542,7 +555,7 @@ function showProfile(id) {
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
-      <div><div class="profile-kicker">PUBLIC MUSE / PROFILE VIEW</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
+      <div><div class="profile-kicker">MUSE / PROFILE VIEW</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
       <a class="button button-ghost" href="${escapeHtml(musebookUrl(muse || {}))}" target="_blank" rel="noreferrer">Open in Musebook</a>
     </div>
     <div class="profile-grid">
