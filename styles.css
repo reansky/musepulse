@@ -701,3 +701,54 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
   .passport-metric strong { font-size: 16px; }
   .methodology-states { display: grid; gap: 10px; }
 }
+
+/* Graph observatory: the panel is a visual instrument, not an empty SVG box. */
+.radar-section > .radar-panel { min-height: 570px; isolation: isolate; }
+.radar-panel::after { position: absolute; inset: 0; z-index: 0; background: radial-gradient(circle at 50% 48%, rgba(125, 235, 224, .08), transparent 28%), linear-gradient(90deg, transparent 49.94%, rgba(219, 226, 255, .08) 50%, transparent 50.06%); content: ""; pointer-events: none; }
+.radar-panel-head { position: absolute; top: 18px; right: 22px; left: 22px; z-index: 4; display: flex; justify-content: space-between; gap: 16px; color: rgba(224, 231, 255, .72); font: 9px var(--mono); letter-spacing: .12em; }
+.radar-panel-head span { display: inline-flex; align-items: center; gap: 8px; }
+.radar-panel-head strong { color: rgba(224, 231, 255, .48); font-weight: 400; }
+.radar-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #7be5d7; box-shadow: 0 0 0 4px rgba(123, 229, 215, .12), 0 0 13px rgba(123, 229, 215, .7); }
+.network-graph { z-index: 1; padding: 50px 24px 58px; }
+.network-graph svg { overflow: visible; }
+.graph-orbit { fill: none; stroke: rgba(219, 226, 255, .13); stroke-width: 1; stroke-dasharray: 2 10; vector-effect: non-scaling-stroke; }
+.graph-orbit-outer { stroke: rgba(154, 148, 255, .2); animation: graph-orbit-drift 24s linear infinite; transform-origin: 50% 50%; }
+.graph-orbit-inner { stroke: rgba(231, 189, 120, .2); stroke-dasharray: 1 8; animation: graph-orbit-drift-reverse 18s linear infinite; transform-origin: 50% 50%; }
+.graph-orbit-core { fill: none; stroke: rgba(123, 229, 215, .16); stroke-dasharray: 1 7; }
+.graph-core-glow { fill: url(#graph-core-glow); opacity: .9; }
+.graph-links { pointer-events: none; }
+.graph-link { stroke: rgba(210, 222, 255, .35); stroke-width: 1.1; stroke-dasharray: 2 8; stroke-linecap: round; animation: graph-link-flow 7s linear infinite; vector-effect: non-scaling-stroke; }
+.graph-node { cursor: pointer; outline: none; }
+.graph-node-halo { fill: rgba(255, 255, 255, .08); stroke: rgba(255, 255, 255, .18); stroke-width: 1; opacity: .9; transition: fill .2s, stroke .2s, stroke-width .2s; }
+.graph-node-pulse { fill: none; stroke: rgba(123, 229, 215, .3); stroke-width: 1; opacity: .65; animation: graph-node-breathe 3.8s ease-in-out infinite; vector-effect: non-scaling-stroke; }
+.graph-node.muse .graph-node-halo { stroke: rgba(152, 145, 255, .58); }
+.graph-node.channel .graph-node-halo { stroke: rgba(232, 190, 121, .64); }
+.graph-node:hover .graph-node-halo, .graph-node:focus .graph-node-halo { fill: rgba(255, 255, 255, .2); stroke: #fff; stroke-width: 2; }
+.graph-node:hover .graph-node-pulse, .graph-node:focus .graph-node-pulse { opacity: 1; stroke-width: 2; }
+.graph-node-ring { fill: rgba(17, 24, 51, .72); stroke-width: 1.5; }
+.graph-node.muse .graph-node-ring { stroke: #9a94ff; }
+.graph-node.channel .graph-node-ring { stroke: #e7bd78; }
+.graph-initial { fill: #f4f5ff; font: 13px var(--mono); text-anchor: middle; }
+.graph-label-bg { fill: rgba(10, 17, 43, .82); stroke: rgba(219, 226, 255, .23); }
+.graph-label { fill: #eef1ff; font: 9px var(--mono); letter-spacing: .01em; text-anchor: middle; }
+.graph-core-mark { pointer-events: none; }
+.graph-core-halo { fill: rgba(116, 232, 223, .1); stroke: rgba(116, 232, 223, .42); stroke-width: 1; }
+.graph-core { fill: rgba(17, 30, 66, .9); stroke: #8fe8dd; stroke-width: 1.2; }
+.graph-core-label { fill: #e8fffb; font: 500 9px var(--mono); letter-spacing: .08em; text-anchor: middle; }
+.graph-core-subtitle { fill: rgba(155, 232, 223, .7); font: 7px var(--mono); letter-spacing: .1em; text-anchor: middle; }
+.radar-empty { z-index: 3; }
+.radar-foot { z-index: 4; }
+@keyframes graph-link-flow { to { stroke-dashoffset: -24; } }
+@keyframes graph-orbit-drift { to { transform: rotate(360deg); } }
+@keyframes graph-orbit-drift-reverse { to { transform: rotate(-360deg); } }
+@keyframes graph-node-breathe { 0%, 100% { opacity: .35; transform: scale(.94); transform-origin: center; } 50% { opacity: .85; transform: scale(1.08); transform-origin: center; } }
+@media (prefers-reduced-motion: reduce) {
+  .graph-link, .graph-orbit-outer, .graph-orbit-inner, .graph-node-pulse { animation: none; }
+}
+@media (max-width: 680px) {
+  .radar-section > .radar-panel { min-height: 500px; }
+  .radar-panel-head { top: 14px; right: 16px; left: 16px; font-size: 8px; }
+  .radar-panel-head strong { display: none; }
+  .network-graph { padding: 42px 4px 58px; }
+  .radar-section > .radar-panel .radar-foot { right: 16px; bottom: 14px; left: 16px; }
+}
