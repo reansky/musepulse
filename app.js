@@ -712,6 +712,7 @@ function showChannelProfile(id) {
   const activity = channel ? state.activity.filter((event) => event.channelId === String(channel.id)) : [];
   const people = [...new Set(activity.flatMap((event) => [event.actorId, ...(event.participantIds || [])]).filter(Boolean))];
   const latestActivity = activity.map((event) => event.time).filter(Boolean).sort().at(-1);
+  setActiveView(null);
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
@@ -750,6 +751,7 @@ function showProfile(id) {
   const recordDate = muse?.createdAt ? new Date(muse.createdAt) : null;
   const recordDateLabel = recordDate && !Number.isNaN(recordDate.getTime()) ? recordDate.toLocaleDateString([], { dateStyle: "medium" }) : "Not exposed";
   state.profileId = id;
+  setActiveView(null);
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
@@ -809,6 +811,7 @@ function wireEvents() {
     }
   });
   window.addEventListener("popstate", () => routeFromLocation());
+  window.addEventListener("hashchange", () => routeFromLocation());
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && !state.loading && Date.now() - (state.lastRefreshAt || 0) >= CONFIG.REFRESH_INTERVAL) loadData({ force: true });
   });
@@ -816,7 +819,43 @@ function wireEvents() {
 
 function routeFromLocation() {
   const match = window.location.pathname.match(/^\/muse\/(.+)$/);
-  if (match) showProfile(decodeURIComponent(match[1]));
+  if (match) {
+    showProfile(decodeURIComponent(match[1]));
+    return;
+  }
+  $("#profile-view").hidden = true;
+  const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+  const view = {
+    top: "home",
+    home: "home",
+    pulse: "pulse",
+    muses: "muses",
+    channels: "muses",
+    projects: "projects",
+    skills: "skills",
+    radar: "graph",
+    graph: "graph",
+    methodology: "method",
+    method: "method",
+    "for-muses": "method"
+  }[hash] || "home";
+  setActiveView(view);
+}
+
+function setActiveView(view) {
+  $("#profile-view").hidden = view !== null;
+  $("main").querySelectorAll("[data-view]").forEach((section) => { section.hidden = section.dataset.view !== view; });
+  $$("#primary-nav a").forEach((link) => {
+    const target = link.getAttribute("href")?.replace(/^#/, "").toLowerCase();
+    const targetView = {
+      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", skills: "skills", radar: "graph", methodology: "method"
+    }[target] || "home";
+    const active = targetView === view;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (view !== null) window.scrollTo(0, 0);
 }
 
 function init() {
