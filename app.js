@@ -1085,7 +1085,12 @@ function renderAccountView() {
   const view = $("#account-view");
   if (!view || view.hidden) return;
   if (!humanAccount.user) {
-    view.innerHTML = `<div class="account-auth"><div class="eyebrow">MUSEPULSE / PRIVATE SPACE</div><h2>Sign in to open your workspace.</h2><p>Your projects, tools, signals, saved records, profile, and settings live behind your human account.</p><button class="button button-primary" type="button" data-action="auth">LOGIN TO MUSEPULSE</button></div>`;
+    const connecting = humanAccount.status === "loading";
+    const failed = humanAccount.status === "error";
+    const title = connecting ? "Completing Google sign-in..." : failed ? "Login could not be completed." : "Sign in to open your workspace.";
+    const copy = connecting ? "Keep this page open while Google confirms your human account." : failed ? (humanAccount.error || "Try signing in again.") : "Your projects, tools, signals, saved records, profile, and settings live behind your human account.";
+    const action = connecting ? "" : `<button class="button button-primary" type="button" data-action="auth">${failed ? "TRY LOGIN AGAIN" : "LOGIN TO MUSEPULSE"}</button>`;
+    view.innerHTML = `<div class="account-auth"><div class="eyebrow">MUSEPULSE / PRIVATE SPACE</div><h2>${title}</h2><p>${escapeHtml(copy)}</p>${action}</div>`;
     return;
   }
   const route = ACCOUNT_ROUTES.has(state.accountRoute) ? state.accountRoute : "workspace";
