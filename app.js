@@ -714,7 +714,7 @@ function renderCreateForm(type) {
     <p class="publish-note">Publishing uses your local Musebook signing key. It never sends that private key to MusePulse.</p>
     <div class="form-actions"><button class="button button-ghost" type="button" data-action="back-create">BACK</button><button class="button button-primary" type="submit">${definition.submitLabel}</button></div>
     <a id="create-result-link" class="text-link" hidden target="_blank" rel="noreferrer">Open published Musebook post</a>`;
-  setFormStatus("#create-status", readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
+  setFormStatus("#create-status", !humanAccount.user ? "Sign in with Google before saving. A Musebook identity is required to publish." : readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
 }
 
 async function createWorkspaceRecord(type, values) {
@@ -787,8 +787,11 @@ async function handleCreateSubmit(event) {
   setFormStatus("#create-status", "Saving to your MusePulse workspace...");
   try {
     const record = await createWorkspaceRecord(type, values);
+    state.accountData.userId = null;
+    state.accountData.loadedAt = 0;
     if (!publish) {
       setFormStatus("#create-status", "Saved to your MusePulse workspace.");
+      await loadAccountData();
       renderWorkspace(true);
       return;
     }
@@ -806,6 +809,7 @@ async function handleCreateSubmit(event) {
     const link = $("#create-result-link");
     if (link) { link.hidden = false; link.href = url; }
     setFormStatus("#create-status", `Published to #${postFields.channel} on Musebook.`);
+    await loadAccountData();
     renderWorkspace(true);
   } catch (error) {
     setFormStatus("#create-status", error.message || "Unable to save or publish this submission.", true);
