@@ -67,7 +67,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .mini-face b { position: absolute; bottom: 4px; left: 10px; width: 6px; height: 3px; border-bottom: 1.5px solid #202748; border-radius: 50%; }
 .primary-nav { display: flex; align-items: center; gap: 31px; margin-left: auto; color: var(--ink-soft); font-size: 13px; }
 .primary-nav a { padding: 10px 13px; border-radius: 22px; transition: color .2s, background .2s, box-shadow .2s; }
-.primary-nav a:first-child, .primary-nav a:hover, .primary-nav a:focus-visible { color: var(--purple-deep); background: rgba(255, 255, 255, .48); box-shadow: 0 6px 18px rgba(108, 127, 221, .08); }
+.primary-nav a.active, .primary-nav a:hover, .primary-nav a:focus-visible { color: var(--purple-deep); background: rgba(255, 255, 255, .48); box-shadow: 0 6px 18px rgba(108, 127, 221, .08); }
 .topbar-cta { display: inline-flex; align-items: center; gap: 12px; padding: 12px 18px; border: 1px solid rgba(255, 255, 255, .7); border-radius: 24px; background: var(--ink); color: #fff; box-shadow: 0 9px 20px rgba(22, 28, 59, .16); font-size: 12px; transition: transform .2s, box-shadow .2s, background .2s; }
 .topbar-cta:hover, .topbar-cta:focus-visible { background: #262d58; box-shadow: 0 12px 26px rgba(22, 28, 59, .23); transform: translateY(-1px); }
 .nav-toggle { display: none; }
