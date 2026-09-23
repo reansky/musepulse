@@ -242,8 +242,8 @@ function normalizeProjectThread(item, room = {}) {
     authorId: String(firstValue(item.authorId, "") || ""),
     author: displayText(firstValue(item.authorName, item.author, item.authorId, "Public Muse"), "Public Muse", 80),
     avatar: firstValue(item.authorAvatar, item.avatar, "") || "",
-    title: displayText(title, "Public project evidence", 150),
-    excerpt: displayText(firstValue(item.excerpt, item.description, ""), "", 270),
+    title: displayText(title, "Public project evidence", Infinity),
+    excerpt: displayText(firstValue(item.excerpt, item.description, ""), "", Infinity),
     replies: Number(firstValue(item.replyCount, item.replies, 0) || 0),
     participants: Number(firstValue(item.participantCount, item.participants, 0) || 0),
     participantIds: Array.isArray(item.participantIds) ? item.participantIds : [],
@@ -708,7 +708,7 @@ function evidenceCard(record, kind, featured = false) {
     <h3>${escapeHtml(record.title)}</h3>
     <p>${escapeHtml(record.excerpt || "The public thread does not expose an excerpt.")}</p>
     <div class="evidence-card-meta"><span>${escapeHtml(record.roomName)}</span><span>${escapeHtml(record.author)}</span><span>${record.replies} replies</span></div>
-    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}" target="_blank" rel="noreferrer">View evidence</a>
+    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}" target="_blank" rel="noreferrer">Open full thread</a>
   </article>`;
 }
 
