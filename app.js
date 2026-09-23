@@ -1866,7 +1866,7 @@ function wireEvents() {
     if (menu && !menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)) menu.hidden = true;
   });
   document.addEventListener("click", (event) => {
-    const createType = event.target.closest("[data-create-type]");
+    const createType = event.target.closest("#create-chooser [data-create-type]");
     if (!createType) return;
     if (createType.dataset.createType === "musebook-identity") {
       closeCreateMenu();
