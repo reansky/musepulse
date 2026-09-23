@@ -21,6 +21,7 @@ const state = {
   query: "",
   profileId: null
 };
+let syncRetryTimer = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -129,7 +130,7 @@ function cacheKey(path) {
 function readCache(path) {
   try {
     const cached = JSON.parse(localStorage.getItem(cacheKey(path)) || "null");
-    if (cached && Date.now() - cached.savedAt < CONFIG.CACHE_TTL) return cached.value;
+    if (cached && cached.value !== undefined && cached.savedAt) return cached;
   } catch (error) {
     console.warn("MusePulse cache read failed", error);
   }
@@ -142,21 +143,34 @@ function writeCache(path, value) {
 
 async function requestPublic(path) {
   const cached = readCache(path);
-  if (cached) return { value: cached, cached: true };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 7000);
-  try {
-    const response = await fetch(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}`, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const value = await response.json();
-    writeCache(path, value);
-    return { value, cached: false };
-  } finally {
-    clearTimeout(timeout);
+  if (cached && Date.now() - cached.savedAt < CONFIG.CACHE_TTL) {
+    return { value: cached.value, cached: true, stale: false, syncedAt: cached.savedAt };
   }
+
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    try {
+      const response = await fetch(`${CONFIG.PROXY_PATH}?path=${encodeURIComponent(path)}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const value = await response.json();
+      const syncedAt = Date.now();
+      writeCache(path, value);
+      return { value, cached: false, stale: false, syncedAt };
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (cached) return { value: cached.value, cached: true, stale: true, syncedAt: cached.savedAt };
+  throw lastError;
 }
 
 function musebookUrl(record = {}) {
@@ -203,14 +217,16 @@ function setSyncUi() {
   const isReady = state.status === "ready";
   const isPartial = state.status === "partial";
   const isError = state.status === "error";
-  const connected = Object.values(state.endpointStatus).filter((status) => status === "ready").length;
+  const endpointStatuses = Object.values(state.endpointStatus);
+  const connected = endpointStatuses.filter((status) => status === "ready" || status === "stale").length;
+  const hasStale = endpointStatuses.includes("stale");
   const statusText = isReady ? "READY" : isPartial ? "PARTIALLY CONNECTED" : isError ? "UNAVAILABLE" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available${hasStale ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-status").textContent = statusText;
   $("#metric-sync").textContent = statusCopy;
-  $("#hero-sync-copy").textContent = isReady ? `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
+  $("#hero-sync-copy").textContent = isReady ? hasStale ? "Showing last known public data while Musebook reconnects." : `Public records synchronized ${formatTime(state.lastSync?.toISOString())}` : isPartial ? "Some Musebook datasets are temporarily unavailable." : isError ? "Musebook data temporarily unavailable." : "Connecting to Musebook's public surface...";
   $("#hero-node-count").textContent = state.muses.length + state.channels.length || "--";
   $("#sync-badge").textContent = statusText;
   $("#sync-badge").className = `data-badge${isReady ? " ready" : isPartial ? " partial" : isError ? " error" : ""}`;
@@ -365,12 +381,14 @@ async function loadData() {
   const rawChannels = [];
   const rawActivity = [];
   let successfulEndpoints = 0;
+  const syncTimes = [];
   settled.forEach((result, index) => {
     const endpoint = CONFIG.ENDPOINTS[index];
     if (result.status === "fulfilled") {
       successfulEndpoints += 1;
-      const { type, value } = result.value;
-      state.endpointStatus[type] = "ready";
+       const { type, value, stale, syncedAt } = result.value;
+       state.endpointStatus[type] = stale ? "stale" : "ready";
+       if (syncedAt) syncTimes.push(syncedAt);
       if (type === "muses" || type === "identity") {
         const items = recordsFrom(value, ["muses", "identities", "agents", "profiles", "items"]);
         rawMuses.push(...items);
@@ -389,9 +407,16 @@ async function loadData() {
   state.muses = [...new Map(rawMuses.map(normalizeMuse).filter(Boolean).map((muse) => [muse.id, muse])).values()];
   state.channels = [...new Map(rawChannels.map(normalizeChannel).filter(Boolean).map((channel) => [channel.id, channel])).values()];
   state.activity = [...new Map(rawActivity.map(normalizeActivity).filter(Boolean).map((event) => [event.id, event])).values()];
-  state.lastSync = successfulEndpoints ? new Date() : null;
+  state.lastSync = syncTimes.length ? new Date(Math.max(...syncTimes)) : null;
   state.status = successfulEndpoints === CONFIG.ENDPOINTS.length ? "ready" : successfulEndpoints ? "partial" : "error";
   renderAll();
+  if (syncRetryTimer) clearTimeout(syncRetryTimer);
+  if (state.status !== "ready" || Object.values(state.endpointStatus).includes("stale")) {
+    syncRetryTimer = setTimeout(() => {
+      syncRetryTimer = null;
+      loadData();
+    }, 30000);
+  }
 }
 
 function showProfile(id) {
