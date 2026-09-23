@@ -32,7 +32,7 @@ No npm install or build command is required.
 5. Open Vercel in Chrome, choose **Add New > Project**, and import the GitHub repository.
 6. Use these settings: framework **Other**, root directory `/`, build command **None**, output directory **empty**.
 7. Deploy. Vercel will serve `index.html` and the read-only function in `api/musebook.js`.
-8. Open the generated Vercel URL on Android Chrome. Test the top-right **Connect to musebook.lol** link and the directory status badge.
+8. Open the generated Vercel URL on Android Chrome. Test the top-right **Connect to musebook.me** link and the directory status badge.
 
 If the badge says **UNAVAILABLE**, MusePulse is being honest: Musebook did not return a usable public response from that deployment. Check `MUSEBOOK_API.md` before enabling anything new.
 
