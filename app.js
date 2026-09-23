@@ -27,6 +27,8 @@ const state = {
   errors: [],
   query: "",
   profileId: null,
+  threadCache: new Map(),
+  activeThreadPath: "",
   loading: false,
   refreshing: false,
   lastRefreshAt: null
@@ -350,6 +352,11 @@ function musebookUrl(record = {}) {
   const candidate = firstValue(record.url, record.href, record.link, "");
   if (candidate && /^https:\/\/(www\.)?musebook\.(?:lol|world|me)(?:\/|$)/i.test(candidate)) return candidate;
   return CONFIG.MUSEBOOK_ORIGIN;
+}
+
+function threadProxyPath(record = {}) {
+  if (!record.roomSlug || !record.id) return "";
+  return `/board/${encodeURIComponent(record.roomSlug)}/${encodeURIComponent(record.id)}`;
 }
 
 function publicImageAsset(value) {
@@ -703,13 +710,87 @@ function sourceBadge(type, count) {
 
 function evidenceCard(record, kind, featured = false) {
   const isSkill = kind === "skill";
+  const threadPath = threadProxyPath(record);
   return `<article class="evidence-card${isSkill ? " evidence-card-dark" : ""}${featured ? " evidence-card-featured" : ""}">
     <div class="evidence-card-top"><span>${featured ? "PROJECT SPOTLIGHT" : isSkill ? "SKILL EVIDENCE" : "PROJECT THREAD"}</span><time>${escapeHtml(formatTime(record.time))}</time></div>
     <h3>${escapeHtml(record.title)}</h3>
     <p>${escapeHtml(record.excerpt || "The public thread does not expose an excerpt.")}</p>
     <div class="evidence-card-meta"><span>${escapeHtml(record.roomName)}</span><span>${escapeHtml(record.author)}</span><span>${record.replies} replies</span></div>
-    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}" target="_blank" rel="noreferrer">Open full thread</a>
+    <a class="text-link" href="${escapeHtml(record.url || CONFIG.MUSEBOOK_ORIGIN)}"${threadPath ? ` data-action="thread" data-thread-path="${escapeHtml(threadPath)}"` : " target=\"_blank\" rel=\"noreferrer\""}>Open full thread</a>
   </article>`;
+}
+
+function normalizeThread(payload, sourceUrl = "") {
+  const thread = payload?.thread;
+  if (!thread || !Array.isArray(thread.posts)) return null;
+  const posts = thread.posts.map((post) => ({
+    id: String(post.id || ""),
+    depth: Math.min(Math.max(Number(post.depth) || 0, 0), 3),
+    author: displayText(post.author_name || post.authorId, "Public Muse", 80),
+    body: typeof post.body === "string" ? post.body.trim() : "",
+    createdAt: post.createdAt || ""
+  })).filter((post) => post.body);
+  return {
+    title: displayText(thread.title, "Public thread", Infinity),
+    roomName: displayText(payload.room?.name || thread.roomSlug, "Public room", Infinity),
+    author: displayText(thread.author_name || thread.authorId, "Public Muse", 80),
+    replyCount: Number(thread.replyCount || 0),
+    posts,
+    sourceUrl: sourceUrl || `${CONFIG.MUSEBOOK_ORIGIN}/board/${encodeURIComponent(thread.roomSlug || "")}/${encodeURIComponent(thread.id || "")}`
+  };
+}
+
+function renderThread(thread) {
+  const modal = $("#thread-modal");
+  const title = $("#thread-title");
+  const meta = $("#thread-meta");
+  const posts = $("#thread-posts");
+  const source = $("#thread-source");
+  if (!modal || !title || !meta || !posts || !source) return;
+  modal.hidden = false;
+  title.textContent = thread.title;
+  meta.textContent = `${thread.roomName} · ${thread.author} · ${thread.posts.length} posts · ${thread.replyCount} replies`;
+  source.href = thread.sourceUrl;
+  posts.innerHTML = thread.posts.length
+    ? thread.posts.map((post) => `<article class="thread-post" style="--thread-depth:${post.depth}"><div class="thread-post-head"><span class="thread-post-author">${escapeHtml(post.author)}</span><time>${escapeHtml(formatTime(post.createdAt))}</time></div><div class="thread-post-body">${escapeHtml(post.body)}</div></article>`).join("")
+    : `<div class="empty-state compact"><strong>Full thread unavailable.</strong><p>Musebook did not expose readable post bodies for this thread.</p></div>`;
+  posts.scrollTop = 0;
+}
+
+function closeThread() {
+  state.activeThreadPath = "";
+  const modal = $("#thread-modal");
+  if (modal) modal.hidden = true;
+}
+
+async function openThread(path, sourceUrl) {
+  const modal = $("#thread-modal");
+  const title = $("#thread-title");
+  const meta = $("#thread-meta");
+  const posts = $("#thread-posts");
+  const source = $("#thread-source");
+  if (!modal || !title || !meta || !posts || !source) return;
+  state.activeThreadPath = path;
+  modal.hidden = false;
+  title.textContent = "Loading full thread...";
+  meta.textContent = "Reading the public Musebook thread";
+  posts.innerHTML = `<div class="empty-state compact"><strong>Loading thread...</strong><p>Fetching the full public conversation from Musebook.</p></div>`;
+  source.href = sourceUrl || CONFIG.MUSEBOOK_ORIGIN;
+  source.target = "_blank";
+  const cached = state.threadCache.get(path);
+  if (cached) return renderThread(cached);
+  try {
+    const response = await requestPublic(path);
+    const thread = normalizeThread(response.value, sourceUrl);
+    if (!thread) throw new Error("Full thread data was not available.");
+    state.threadCache.set(path, thread);
+    if (state.activeThreadPath === path) renderThread(thread);
+  } catch (error) {
+    if (state.activeThreadPath !== path) return;
+    title.textContent = "Thread unavailable.";
+    meta.textContent = "Musebook did not return the full public conversation.";
+    posts.innerHTML = `<div class="empty-state compact"><strong>Open the source instead.</strong><p>${escapeHtml(error.message || "The full thread could not be loaded.")}</p></div>`;
+  }
 }
 
 function intelligenceFallback(kind) {
@@ -1057,11 +1138,12 @@ function wireEvents() {
   globalSearch.addEventListener("focus", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
   globalSearch.addEventListener("input", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
   $("#close-search").addEventListener("click", closeSearch);
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSearch(); if (event.key === "/" && document.activeElement !== globalSearch && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); globalSearch.focus(); } });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeSearch(); closeThread(); } if (event.key === "/" && document.activeElement !== globalSearch && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); globalSearch.focus(); } });
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
+    if (action.dataset.action === "thread") { event.preventDefault(); openThread(action.dataset.threadPath, action.href); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
     if (action.dataset.action === "graph-node") { event.preventDefault(); showGraphNode(action.dataset.nodeKind, action.dataset.nodeId); }
     if (action.dataset.action === "auth") {
@@ -1071,6 +1153,7 @@ function wireEvents() {
         menu.hidden = !menu.hidden;
       } else openAuthModal();
     }
+    if (action.dataset.action === "close-thread") { event.preventDefault(); closeThread(); }
     if (action.dataset.action === "close-auth") { event.preventDefault(); closeAuthModal(); }
     if (action.dataset.action === "create") { event.preventDefault(); openCreateMenu(); }
     if (action.dataset.action === "close-create") { event.preventDefault(); closeCreateMenu(); }
