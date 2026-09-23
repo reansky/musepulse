@@ -500,6 +500,43 @@ select:focus { border-color: var(--purple); }
   .radar-panel { min-height: 390px; }
 }
 
+/* Each routed menu owns its content area, so long datasets never push over the shell. */
+.topbar { position: sticky; top: 0; z-index: 30; }
+.user-menu { top: calc(100% + 8px); right: 0; }
+.user-menu[hidden] { display: none; }
+main > .section-block[data-view]:not([data-view="home"]) {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 82px);
+  max-height: calc(100dvh - 82px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #a7b9ed transparent;
+  scrollbar-width: thin;
+}
+main > .section-block[data-view]:not([data-view="home"])::-webkit-scrollbar { width: 8px; }
+main > .section-block[data-view]:not([data-view="home"])::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: #a7b9ed; background-clip: padding-box; }
+main > .section-block[data-view]:not([data-view="home"]) > .directory-viewport,
+main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid,
+main > .section-block[data-view]:not([data-view="home"]) > .workspace-content,
+main > .section-block[data-view]:not([data-view="home"]) > .radar-panel,
+main > .section-block[data-view]:not([data-view="home"]) > .for-muses-grid,
+main > .section-block[data-view]:not([data-view="home"]) > .methodology-points {
+  flex: 1;
+  min-height: 0;
+}
+main > .section-block[data-view]:not([data-view="home"]) > .directory-viewport { max-height: none; }
+main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { overflow-y: auto; align-content: start; padding: 4px 8px 8px 2px; }
+.oauth-actions-primary { grid-template-columns: 1fr 1fr; }
+@media (max-width: 680px) {
+  main > .section-block[data-view]:not([data-view="home"]) {
+    min-height: calc(100dvh - 68px);
+    max-height: calc(100dvh - 68px);
+    padding-block: 48px;
+  }
+  .oauth-actions-primary { grid-template-columns: 1fr; }
+}
+
 /* Observatory layer: evidence cards and unavailable states stay informative without inventing data. */
 .primary-nav { gap: 8px; }
 .primary-nav a { padding-inline: 9px; font-size: 11px; }
