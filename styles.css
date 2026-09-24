@@ -234,6 +234,14 @@ select:focus { border-color: var(--purple); }
 .empty-state strong { color: var(--ink); font-size: 17px; font-weight: 600; }
 .empty-state p { max-width: 470px; margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .empty-state-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 7px; }
+.directory-controls { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 6px 4px; border-top: 1px solid var(--line); }
+.directory-count { color: var(--muted); font: 9px var(--mono); letter-spacing: .08em; }
+.directory-control-actions { display: flex; align-items: center; justify-content: end; flex-wrap: wrap; gap: 15px; }
+.directory-load-more, .directory-back-top { padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 14px; background: rgba(255, 255, 255, .68); color: var(--purple-deep); cursor: pointer; font: 9px var(--mono); letter-spacing: .05em; transition: border-color .2s, background .2s, transform .2s; }
+.directory-load-more { border-color: rgba(108, 105, 239, .42); background: var(--purple); color: #fff; box-shadow: 0 8px 16px rgba(108, 105, 239, .16); }
+.directory-load-more:hover, .directory-load-more:focus-visible, .directory-back-top:hover, .directory-back-top:focus-visible { border-color: var(--purple); background: #fff; color: var(--purple-deep); outline: 0; transform: translateY(-1px); }
+.directory-back-top { background: transparent; }
+.directory-back { white-space: nowrap; }
 .channel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .channel-card { min-height: 160px; }
 .channel-card .card-top { margin-bottom: 18px; }
@@ -418,7 +426,8 @@ select:focus { border-color: var(--purple); }
   .section-block { padding-block: 70px; }
   .section-heading, .section-heading-stack-mobile { align-items: start; flex-direction: column; gap: 20px; }
   .section-aside { justify-items: start; }
-  .section-tools { width: 100%; }
+  .section-tools { width: 100%; flex-wrap: wrap; }
+  .section-tools .directory-back { width: 100%; }
   .search-field { flex: 1; width: auto; }
   .pulse-row { grid-template-columns: 1fr auto; gap: 10px 12px; padding-block: 17px; }
   .pulse-time { grid-column: 1 / -1; }
@@ -445,6 +454,8 @@ select:focus { border-color: var(--purple); }
   .radar-foot { flex-direction: column; gap: 5px; }
   .legend { justify-content: start; }
   .methodology-points { grid-template-columns: 1fr; }
+  .directory-controls { align-items: stretch; flex-direction: column; gap: 13px; padding-inline: 3px; }
+  .directory-control-actions { justify-content: space-between; }
   .about-boundary { grid-template-columns: 1fr; gap: 12px; }
   .about-boundary .text-link { justify-self: start; }
   .about-usage-heading { grid-template-columns: 1fr; gap: 16px; }
