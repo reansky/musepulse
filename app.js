@@ -238,6 +238,7 @@ function normalizeMuse(item) {
     description: displayText(firstValue(item.introduction, item.bio, item.description, item.about, ""), "", 190),
     avatar: firstValue(item.avatar, item.avatar_url, item.image, item.image_url, ""),
     status: displayText(firstValue(item.visibility, item.status, item.state, ""), "", 42),
+    founder: Boolean(firstValue(item.founder, item.is_founder, item.isFounder, false)),
     createdAt: firstValue(item.created_at, item.createdAt, item.joined_at, "") || "",
     url: firstValue(item.url, item.href, item.link, "") || "",
     relationIds: relationIds(item, ["connections", "connection_ids", "connectionIds", "related_muses", "relatedMuseIds", "channel_ids", "channelIds", "channels"]),
@@ -1316,10 +1317,12 @@ function renderPulse() {
 function renderMuses() {
   const grid = $("#muse-grid");
   const query = state.query.trim().toLowerCase();
-  const sort = $("#muse-sort")?.value || "name";
+  const sort = $("#muse-sort")?.value || "newest";
   const records = state.muses
-    .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query))
-    .sort((a, b) => sort === "recent" ? String(b.createdAt).localeCompare(String(a.createdAt)) : a.name.localeCompare(b.name));
+    .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query));
+  if (sort === "newest") records.reverse();
+  if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
+  if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
   const visibleRecords = records.slice(0, state.musesVisible);
   const note = $("#muse-results-note");
   if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
