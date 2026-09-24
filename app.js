@@ -2108,6 +2108,8 @@ function setActiveView(view) {
 }
 
 function init() {
+  const museSort = $("#muse-sort");
+  if (museSort) museSort.value = "newest";
   wireEvents();
   renderAll();
   routeFromLocation();
