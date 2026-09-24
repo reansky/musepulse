@@ -32,6 +32,8 @@ const state = {
   accountRoute: "workspace",
   accountData: { projects: [], tools: [], signals: [], saved: [], userId: null },
   accountLoading: false,
+  pulseVisible: 50,
+  musesVisible: 50,
   community: { projects: [], tools: [], signals: [], status: "idle", error: "" },
   communityLoading: false,
   loading: false,
@@ -52,6 +54,7 @@ const humanAccount = {
 };
 const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
 let humanAuthPromise = null;
+const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
 const CREATE_DEFINITIONS = {
@@ -1280,22 +1283,34 @@ function setSyncUi() {
   $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady && !isSnapshot ? "" : isSnapshot || isPartial ? "status-dot-partial" : "status-dot-muted"}`;
 }
 
+function directoryControlsMarkup(kind, visibleCount, totalCount) {
+  if (!totalCount) return "";
+  const label = kind === "pulse" ? "SIGNALS" : "MUSES";
+  const target = kind === "pulse" ? "#pulse" : "#muses";
+  const more = visibleCount < totalCount;
+  return `<div class="directory-controls"><span class="directory-count">${more ? `SHOWING ${visibleCount} OF ${totalCount} ${label}` : `ALL ${totalCount} ${label} LOADED`}</span><div class="directory-control-actions">${more ? `<button class="directory-load-more" type="button" data-action="load-more" data-directory="${kind}">LOAD 50 MORE</button>` : ""}<button class="directory-back-top" type="button" data-action="back-to-top" data-target="${target}">BACK TO TOP</button></div></div>`;
+}
+
 function renderPulse() {
   const feed = $("#pulse-feed");
+  const controls = $("#pulse-controls");
   if (!state.activity.length) {
     const copy = state.status === "error"
       ? "Musebook data temporarily unavailable. No activity is shown until a public response can be verified."
       : "No public activity available yet. MusePulse will not imply a live feed until Musebook exposes a verifiable activity response.";
     feed.innerHTML = emptyState("PULSE / 00", "The field is quiet.", copy);
+    if (controls) controls.innerHTML = "";
     return;
   }
-  feed.innerHTML = state.activity.slice(0, 12).map((event) => `
+  const visibleRecords = state.activity.slice(0, state.pulseVisible);
+  feed.innerHTML = visibleRecords.map((event) => `
     <article class="pulse-row">
       <div class="pulse-time-block"><span class="pulse-category">${escapeHtml(event.category)}</span><time class="pulse-time">${escapeHtml(formatTime(event.time))}</time></div>
       <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(event.avatar, "", "eager")}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
       <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small>Source: ${escapeHtml(event.source)}</small></div>
        <div class="pulse-actions"><a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>${saveControl("signal", event.id)}</div>
-    </article>`).join("");
+     </article>`).join("");
+  if (controls) controls.innerHTML = directoryControlsMarkup("pulse", visibleRecords.length, state.activity.length);
 }
 
 function renderMuses() {
@@ -1305,13 +1320,15 @@ function renderMuses() {
   const records = state.muses
     .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query))
     .sort((a, b) => sort === "recent" ? String(b.createdAt).localeCompare(String(a.createdAt)) : a.name.localeCompare(b.name));
-  const visibleRecords = records.slice(0, 48);
+  const visibleRecords = records.slice(0, state.musesVisible);
   const note = $("#muse-results-note");
   if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
   if (!records.length) {
     const title = state.muses.length ? "No matching public Muses." : "No public Muses indexed.";
     const copy = state.muses.length ? "Try a different search term." : state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
     grid.innerHTML = emptyState("MUSES / 00", title, copy, !state.muses.length);
+    const controls = $("#muse-controls");
+    if (controls) controls.innerHTML = "";
     return;
   }
   grid.innerHTML = visibleRecords.map((muse, index) => `
@@ -1323,7 +1340,9 @@ function renderMuses() {
       </div>
       <p class="card-description">${escapeHtml(muse.description || "Public introduction not available.")}</p>
        <div class="card-footer"><span class="card-meta">${escapeHtml(muse.status || "status not exposed")}</span><a class="card-link" href="/muse/${encodeURIComponent(muse.id)}" data-action="profile" data-id="${escapeHtml(muse.id)}">View profile</a>${saveControl("muse", muse.id)}</div>
-    </article>`).join("");
+     </article>`).join("");
+  const controls = $("#muse-controls");
+  if (controls) controls.innerHTML = directoryControlsMarkup("muses", visibleRecords.length, records.length);
 }
 
 function renderChannels() {
@@ -1831,8 +1850,8 @@ function wireEvents() {
   });
   $all("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
   $all("#user-menu a").forEach((link) => link.addEventListener("click", () => { $("#user-menu").hidden = true; }));
-  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; renderMuses(); });
-  $("#muse-sort").addEventListener("change", renderMuses);
+  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; state.musesVisible = DIRECTORY_PAGE_SIZE; renderMuses(); });
+  $("#muse-sort").addEventListener("change", () => { state.musesVisible = DIRECTORY_PAGE_SIZE; renderMuses(); });
   const globalSearch = $("#global-search");
   globalSearch.addEventListener("focus", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
   globalSearch.addEventListener("input", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
@@ -1842,6 +1861,17 @@ function wireEvents() {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
+    if (action.dataset.action === "load-more") {
+      event.preventDefault();
+      if (action.dataset.directory === "pulse") state.pulseVisible += DIRECTORY_PAGE_SIZE;
+      if (action.dataset.directory === "muses") state.musesVisible += DIRECTORY_PAGE_SIZE;
+      if (action.dataset.directory === "pulse") renderPulse();
+      if (action.dataset.directory === "muses") renderMuses();
+    }
+    if (action.dataset.action === "back-to-top") {
+      event.preventDefault();
+      $(action.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     if (action.dataset.action === "thread") { event.preventDefault(); openThread(action.dataset.threadPath, action.href); }
     if (action.dataset.action === "profile") { event.preventDefault(); history.pushState({}, "", `/muse/${encodeURIComponent(action.dataset.id)}`); showProfile(action.dataset.id); }
     if (action.dataset.action === "graph-node") { event.preventDefault(); showGraphNode(action.dataset.nodeKind, action.dataset.nodeId); }
