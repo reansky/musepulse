@@ -51,6 +51,7 @@ const humanAccount = {
   session: null,
   user: null,
   profile: null,
+  isNewUser: false,
   status: "loading",
   error: ""
 };
@@ -59,6 +60,7 @@ let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
+const ACCOUNT_GREETING_KEY = "musepulse:account-greeting:v1";
 const CREATE_DEFINITIONS = {
   project: {
     title: "Build in public.",
@@ -702,12 +704,40 @@ function showCommunityRecordProfile(type, key, { scroll = true } = {}) {
 }
 
 function authUsername() {
-  return humanAccount.profile?.username || humanAccount.user?.user_metadata?.user_name || humanAccount.user?.email?.split("@")[0] || "human";
+  const metadata = humanAccount.user?.user_metadata || {};
+  const metadataName = firstValue(metadata.user_name, metadata.preferred_username, metadata.username, metadata.screen_name, "");
+  if (humanAccount.profile?.username) return humanAccount.profile.username;
+  if (metadataName) return metadataName;
+  if (isXAccount()) return "human";
+  return humanAccount.user?.email?.split("@")[0] || "human";
 }
 
 function isXAccount() {
   const provider = humanAccount.user?.app_metadata?.provider;
   return provider === "x" || provider === "twitter";
+}
+
+function isFreshAccount(user) {
+  const createdAt = Date.parse(user?.created_at || "");
+  const lastSignInAt = Date.parse(user?.last_sign_in_at || "");
+  return Boolean(createdAt && lastSignInAt && Math.abs(lastSignInAt - createdAt) < 2 * 60 * 1000);
+}
+
+function shouldShowNewUserGreeting(user) {
+  if (!isFreshAccount(user) || !user?.id) return false;
+  try {
+    const greeted = JSON.parse(localStorage.getItem(ACCOUNT_GREETING_KEY) || "{}");
+    if (greeted[user.id]) return false;
+    greeted[user.id] = Date.now();
+    localStorage.setItem(ACCOUNT_GREETING_KEY, JSON.stringify(greeted));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function accountIdentityLabel() {
+  return isXAccount() ? "Signed in with X" : humanAccount.user?.email || "Signed in with an OAuth provider";
 }
 
 function normalizedProfileUsername(value) {
@@ -727,7 +757,8 @@ async function syncOAuthProfile(existingProfile = {}) {
   const handle = firstValue(metadata.user_name, metadata.preferred_username, metadata.username, metadata.screen_name, "");
   const displayName = firstValue(metadata.full_name, metadata.name, metadata.display_name, "");
   const avatarUrl = firstValue(metadata.avatar_url, metadata.picture, metadata.profile_image_url, "");
-  const username = normalizedProfileUsername(handle || displayName || humanAccount.user.email?.split("@")[0]);
+  const fallbackUsername = isXAccount() ? `x-${humanAccount.user.id.slice(0, 8)}` : humanAccount.user.email?.split("@")[0];
+  const username = normalizedProfileUsername(handle || displayName || fallbackUsername);
   const payload = {
     id: humanAccount.user.id,
     username: username || existingProfile.username || normalizedProfileUsername(authUsername()) || "human",
@@ -742,7 +773,7 @@ async function syncOAuthProfile(existingProfile = {}) {
   };
   let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
   if (result.error && username && result.error.code === "23505") {
-    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(humanAccount.user.email?.split("@")[0]) || "human" };
+    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(fallbackUsername) || "human" };
     result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
   }
   if (result.error) throw result.error;
@@ -822,6 +853,7 @@ async function initHumanAuth() {
     if (error) throw error;
     humanAccount.session = data.session;
     humanAccount.user = data.session?.user || null;
+    humanAccount.isNewUser = shouldShowNewUserGreeting(humanAccount.user);
     humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
     if (humanAccount.user) $("#auth-modal").hidden = true;
     client.auth.onAuthStateChange((_event, session) => {
@@ -829,6 +861,7 @@ async function initHumanAuth() {
       accountLoadId += 1;
       humanAccount.session = session;
       humanAccount.user = session?.user || null;
+      humanAccount.isNewUser = shouldShowNewUserGreeting(humanAccount.user);
       humanAccount.profile = null;
       humanAccount.error = "";
       humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
@@ -1364,7 +1397,8 @@ function renderAccountView() {
   const identity = readMusebookIdentity();
   let body = "";
   if (route === "workspace") {
-    body = `<div class="account-hero"><div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>Welcome back, ${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>One place to make, publish, save, and manage your presence around the Muse ecosystem.</p></div><button class="button button-primary" type="button" data-action="create">+ CREATE</button></div><div class="account-stat-grid"><div><span>PROJECTS</span><strong>${data.projects.length}</strong><small>your builds</small></div><div><span>TOOLS</span><strong>${data.tools.length}</strong><small>your utilities</small></div><div><span>SIGNALS</span><strong>${data.signals.length}</strong><small>your observations</small></div><div><span>SAVED</span><strong>${data.saved.length}</strong><small>your watchlist</small></div></div><div class="account-quick-grid"><a href="#my-projects"><strong>MY PROJECTS</strong><small>Keep your builds legible and published.</small></a><a href="#my-tools"><strong>MY TOOLS</strong><small>Give useful things a durable home.</small></a><a href="#my-signals"><strong>MY SIGNALS</strong><small>Review every sourced submission.</small></a><a href="#saved"><strong>SAVED</strong><small>Return to what you want to watch.</small></a><a href="#my-profile"><strong>MY PROFILE</strong><small>Shape your human introduction.</small></a><a href="#settings"><strong>SETTINGS</strong><small>Control account and local identity.</small></a></div>`;
+     const greeting = humanAccount.isNewUser ? "Welcome to MusePulse" : "Welcome back";
+     body = `<div class="account-hero"><div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>${greeting}, ${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>One place to make, publish, save, and manage your presence around the Muse ecosystem.</p></div><button class="button button-primary" type="button" data-action="create">+ CREATE</button></div><div class="account-stat-grid"><div><span>PROJECTS</span><strong>${data.projects.length}</strong><small>your builds</small></div><div><span>TOOLS</span><strong>${data.tools.length}</strong><small>your utilities</small></div><div><span>SIGNALS</span><strong>${data.signals.length}</strong><small>your observations</small></div><div><span>SAVED</span><strong>${data.saved.length}</strong><small>your watchlist</small></div></div><div class="account-quick-grid"><a href="#my-projects"><strong>MY PROJECTS</strong><small>Keep your builds legible and published.</small></a><a href="#my-tools"><strong>MY TOOLS</strong><small>Give useful things a durable home.</small></a><a href="#my-signals"><strong>MY SIGNALS</strong><small>Review every sourced submission.</small></a><a href="#saved"><strong>SAVED</strong><small>Return to what you want to watch.</small></a><a href="#my-profile"><strong>MY PROFILE</strong><small>Shape your human introduction.</small></a><a href="#settings"><strong>SETTINGS</strong><small>Control account and local identity.</small></a></div>`;
   } else if (route === "my-projects") {
     body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / PROJECTS</div><h2>My projects.</h2><p>Projects you own in MusePulse, with their Musebook publishing state.</p></div><button class="button button-primary" type="button" data-action="create-project">+ CREATE PROJECT</button></div>${accountListMarkup("project", data.projects, "No projects yet.", "Start with a build note. Save it here and publish it to the Workshop.", "project")}`;
   } else if (route === "my-tools") {
@@ -1379,7 +1413,7 @@ function renderAccountView() {
     const xLink = xHandle ? `<a href="https://x.com/${encodeURIComponent(xHandle)}" target="_blank" rel="noreferrer">@${escapeHtml(xHandle)} on X</a>` : "";
     body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}${xLink ? ` · ${xLink}` : ""}</small></div></div>`;
   } else if (route === "settings") {
-     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(humanAccount.user.email || "Signed in with an OAuth provider")}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
+     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(accountIdentityLabel())}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
   }
   view.innerHTML = `<div class="account-shell"><div class="account-tabs">${["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"].map((item) => `<a class="${item === route ? "active" : ""}" href="#${item}">${escapeHtml(accountRouteLabel(item))}</a>`).join("")}</div>${body}${data.error ? `<p class="form-status form-status-error">${escapeHtml(data.error)}</p>` : ""}</div>`;
   if (state.accountData.userId !== humanAccount.user.id || !state.accountData.loadedAt) loadAccountData();
