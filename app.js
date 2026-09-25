@@ -58,7 +58,7 @@ const humanAccount = {
 const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
 let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
-const DATA_VIEWS = new Set(["pulse", "muses", "projects", "skills", "graph"]);
+const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
 const CREATE_DEFINITIONS = {
   project: {

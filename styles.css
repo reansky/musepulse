@@ -284,7 +284,7 @@ select:focus { border-color: var(--purple); }
 .radar-empty strong { color: var(--ink); font-size: 16px; font-weight: 600; }
 .radar-empty p { max-width: 380px; margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .radar-foot { position: absolute; right: 18px; bottom: 16px; left: 18px; display: flex; justify-content: space-between; gap: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
-.legend { display: flex; flex-wrap: wrap; justify-content: end; gap: 15px; color: var(--muted); font: 9px var(--mono); }
+.legend { display: flex; flex-wrap: wrap; justify-content: end; gap: 15px; color: var(--ink-soft); font: 9px var(--mono); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend-dot { width: 6px; height: 6px; border-radius: 50%; }
 .legend-muse { background: var(--purple); box-shadow: 0 0 8px rgba(96, 117, 255, .35); }
