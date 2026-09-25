@@ -718,15 +718,17 @@ function normalizedProfileUsername(value) {
   return normalized.length >= 3 ? normalized : "";
 }
 
-async function syncOAuthProfile(existingProfile = {}) {
-  if (!humanAccount.client || !humanAccount.user || !isXAccount()) return existingProfile;
-  const metadata = humanAccount.user.user_metadata || {};
+async function syncOAuthProfile(existingProfile = {}, expectedUserId = humanAccount.user?.id) {
+  const user = humanAccount.user;
+  const provider = user?.app_metadata?.provider;
+  if (!humanAccount.client || !user || user.id !== expectedUserId || !["x", "twitter"].includes(provider)) return existingProfile;
+  const metadata = user.user_metadata || {};
   const handle = firstValue(metadata.user_name, metadata.preferred_username, metadata.username, metadata.screen_name, "");
   const displayName = firstValue(metadata.full_name, metadata.name, metadata.display_name, "");
   const avatarUrl = firstValue(metadata.avatar_url, metadata.picture, metadata.profile_image_url, "");
-  const username = normalizedProfileUsername(handle || displayName || humanAccount.user.email?.split("@")[0]);
+  const username = normalizedProfileUsername(handle || displayName || user.email?.split("@")[0]);
   const payload = {
-    id: humanAccount.user.id,
+    id: user.id,
     username: username || existingProfile.username || normalizedProfileUsername(authUsername()) || "human",
     display_name: displayName || existingProfile.display_name || null,
     avatar_url: avatarUrl || existingProfile.avatar_url || null,
@@ -738,9 +740,11 @@ async function syncOAuthProfile(existingProfile = {}) {
     skills: Array.isArray(existingProfile.skills) ? existingProfile.skills : []
   };
   let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+  if (humanAccount.user?.id !== expectedUserId) return existingProfile;
   if (result.error && username && result.error.code === "23505") {
-    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(humanAccount.user.email?.split("@")[0]) || "human" };
+    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(user.email?.split("@")[0]) || "human" };
     result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+    if (humanAccount.user?.id !== expectedUserId) return existingProfile;
   }
   if (result.error) throw result.error;
   return result.data || payload;
@@ -792,7 +796,7 @@ async function loadHumanProfile() {
   }
   if (humanAccount.status === "signed_in" && isXAccount()) {
     try {
-      humanAccount.profile = await syncOAuthProfile(humanAccount.profile || {});
+      humanAccount.profile = await syncOAuthProfile(humanAccount.profile || {}, userId);
     } catch (error) {
       humanAccount.error = error.message || "X profile sync unavailable.";
     }
