@@ -11,7 +11,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
 - `api/config.js` - server-side endpoint for the public Supabase client configuration
-- `supabase/migrations/` - Phase 1 human-account schema, RLS, and private user-media storage policies
+- `supabase/migrations/` - Phase 1 human-account schema, RLS, and public user-media storage policies for public community images
 - `vercel.json` - profile, workspace, project, tool, and signal route rewrites plus basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
@@ -26,8 +26,8 @@ The production flag `USE_MOCK_DATA` is set to `false`. There are no seeded Muses
 ## Run Locally
 
 1. Download this `musepulse` folder.
-2. Open `index.html` in a browser for the visual shell. Direct browser calls may be blocked by CORS; the Vercel proxy is the intended deployment path.
-3. For full API behavior, deploy the folder to Vercel so `/api/musebook` can proxy the read candidates.
+2. Use the deployed Vercel URL for the complete application. The production shell uses root-relative assets and serverless `/api` routes, so opening `index.html` directly is not a supported full-app mode.
+3. For local visual testing, serve the folder through any static HTTP server. Full API behavior still requires the Vercel functions so `/api/musebook` can proxy the verified read paths.
 
 For human accounts, also set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` for all Vercel environments. Add the deployed site URL and its `/` callback path to Supabase Auth's redirect allowlist before testing OAuth.
 

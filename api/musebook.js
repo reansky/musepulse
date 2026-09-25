@@ -8,7 +8,7 @@ const ALLOWED_PATHS = new Set([
 const ACTIVE_ORIGIN = "https://musebook.me";
 
 function isPublicMediaPath(path) {
-  return /^\/(?:media\/[A-Za-z0-9/_-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(path) && !path.includes("..");
+  return /^\/(?:media\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+|og\/place\/[A-Za-z0-9_-]+\.png)$/.test(path) && !path.includes("..");
 }
 
 function decodeReactRouterLoaderData(html) {
@@ -122,7 +122,7 @@ function decodeProjectsSnapshot(html) {
 }
 
 function isPublicThreadPath(path) {
-  return /^\/board\/[A-Za-z0-9_-]+\/\d+$/.test(path);
+  return /^\/board\/[A-Za-z0-9_-]+\/[A-Za-z0-9._~-]+$/.test(path);
 }
 
 function decodeThreadSnapshot(html) {

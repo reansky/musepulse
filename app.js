@@ -35,6 +35,9 @@ const state = {
   pulseVisible: 50,
   musesVisible: 50,
   community: { projects: [], tools: [], signals: [], status: "idle", error: "" },
+  communityProfileRoute: null,
+  communityProfileLoading: false,
+  communityProfileError: "",
   communityLoading: false,
   loading: false,
   refreshing: false,
@@ -149,6 +152,8 @@ const CHANNEL_COVERS = Object.freeze({
 });
 let syncRetryTimer = null;
 let refreshTimer = null;
+let accountLoadId = 0;
+let authGeneration = 0;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $all = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -564,7 +569,8 @@ function musebookPostUrl(channel, postId) {
 }
 
 function slugify(value) {
-  return String(value || "item").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+  const slug = String(value || "item").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+  return slug.length >= 3 ? slug : `${slug}-item`;
 }
 
 function listValues(value) {
@@ -583,9 +589,9 @@ async function loadCommunityData() {
   try {
     const client = await getSupabaseClient();
     const [projects, tools, signals] = await Promise.all([
-      client.from("projects").select("id,name,slug,description,logo_url,website_url,github_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
-      client.from("tools").select("id,name,slug,description,image_url,url,category,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18),
-      client.from("signals").select("id,title,description,image_url,source_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(18)
+       client.from("projects").select("id,name,slug,description,logo_url,website_url,github_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(50),
+       client.from("tools").select("id,name,slug,description,image_url,url,category,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(50),
+       client.from("signals").select("id,title,description,image_url,source_url,category,status,musebook_post_url,created_at").eq("visibility", "public").order("created_at", { ascending: false }).limit(50)
     ]);
     const firstError = [projects, tools, signals].find((result) => result.error)?.error;
     if (firstError) throw firstError;
@@ -595,6 +601,7 @@ async function loadCommunityData() {
   } finally {
     state.communityLoading = false;
     renderCommunityData();
+    if (state.communityProfileRoute) showCommunityRecordProfile(state.communityProfileRoute.type, state.communityProfileRoute.key, { scroll: false });
   }
 }
 
@@ -605,7 +612,9 @@ function publicCommunityCard(type, record) {
   const image = safeExternalUrl(type === "project" ? record.logo_url : record.image_url);
   const meta = type === "project" ? [record.category || "PROJECT", record.status || "ACTIVE"] : type === "tool" ? [record.category || "TOOL", "PUBLIC"] : [record.category || "DISCOVERY", "PUBLISHED"];
   const saveType = type === "project" ? "project" : type === "tool" ? "tool" : "signal";
-  return `<article class="community-card">${image ? `<img class="community-card-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
+  const routeKey = type === "signal" ? record.id : record.slug;
+  const internalPath = routeKey ? `/${type === "project" ? "projects" : type === "tool" ? "tools" : "signals"}/${encodeURIComponent(routeKey)}` : "";
+  return `<article class="community-card">${image ? `<img class="community-card-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${internalPath ? `<a class="card-link" href="${escapeHtml(internalPath)}">${escapeHtml(title)}</a>` : escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${internalPath ? `<a class="text-link" href="${escapeHtml(internalPath)}">VIEW RECORD</a>` : ""}${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
 }
 
 function renderCommunityCollection(target, type, records, emptyCopy) {
@@ -615,7 +624,7 @@ function renderCommunityCollection(target, type, records, emptyCopy) {
     element.innerHTML = `<div class="community-empty"><strong>Public records unavailable.</strong><p>${escapeHtml(state.community.error)}</p></div>`;
     return;
   }
-  element.innerHTML = records.length ? records.slice(0, 12).map((record) => publicCommunityCard(type, record)).join("") : `<div class="community-empty"><strong>No public ${escapeHtml(type)} records yet.</strong><p>${escapeHtml(emptyCopy)}</p></div>`;
+  element.innerHTML = records.length ? records.map((record) => publicCommunityCard(type, record)).join("") : `<div class="community-empty"><strong>No public ${escapeHtml(type)} records yet.</strong><p>${escapeHtml(emptyCopy)}</p></div>`;
 }
 
 function renderCommunityData() {
@@ -625,6 +634,68 @@ function renderCommunityData() {
   $("#community-project-status")?.replaceChildren(document.createTextNode(`${state.community.projects.length} PUBLIC`));
   $("#community-tool-status")?.replaceChildren(document.createTextNode(`${state.community.tools.length} PUBLIC`));
   $("#community-signal-status")?.replaceChildren(document.createTextNode(`${state.community.signals.length} PUBLIC`));
+}
+
+async function loadCommunityRecord(type, key) {
+  const specs = {
+    project: { table: "projects", field: "slug", select: "id,name,slug,description,logo_url,website_url,github_url,category,status,musebook_post_url,created_at" },
+    tool: { table: "tools", field: "slug", select: "id,name,slug,description,image_url,url,category,musebook_post_url,created_at" },
+    signal: { table: "signals", field: "id", select: "id,title,description,image_url,source_url,category,status,musebook_post_url,created_at" }
+  };
+  const spec = specs[type];
+  if (!spec || state.communityProfileLoading) return;
+  state.communityProfileLoading = true;
+  state.communityProfileError = "";
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.from(spec.table).select(spec.select).eq(spec.field, key).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("That public record does not exist.");
+    const collectionKey = type === "project" ? "projects" : type === "tool" ? "tools" : "signals";
+    state.community[collectionKey] = [data, ...state.community[collectionKey].filter((record) => String(record.id) !== String(data.id))];
+  } catch (error) {
+    state.communityProfileError = error.message || "The public record could not be loaded.";
+  } finally {
+    state.communityProfileLoading = false;
+    if (state.communityProfileRoute?.type === type && String(state.communityProfileRoute.key) === String(key)) showCommunityRecordProfile(type, key, { scroll: false });
+  }
+}
+
+function showCommunityRecordProfile(type, key, { scroll = true } = {}) {
+  const profile = $("#profile-view");
+  if (!profile) return;
+  state.communityProfileRoute = { type, key };
+  setActiveView(null);
+  profile.hidden = false;
+  if (state.communityLoading || state.community.status === "idle") {
+    profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Loading record...</h2><p class="profile-id">Reading the public community directory.</p></div></div>`;
+    return;
+  }
+  if (state.community.status === "error") {
+    profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Record unavailable.</h2><p class="profile-id">${escapeHtml(state.community.error)}</p></div><a class="button button-ghost" href="#home">Return home</a></div>`;
+    return;
+  }
+  const collection = type === "project" ? state.community.projects : type === "tool" ? state.community.tools : state.community.signals;
+  const record = collection.find((item) => String(type === "signal" ? item.id : item.slug) === String(key));
+  if (!record) {
+    if (state.communityProfileLoading) {
+      profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Loading record...</h2><p class="profile-id">Checking the complete public directory.</p></div></div>`;
+      return;
+    }
+    if (!state.communityProfileError) {
+      loadCommunityRecord(type, key);
+      profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Loading record...</h2><p class="profile-id">Checking the complete public directory.</p></div></div>`;
+      return;
+    }
+    profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Record not found.</h2><p class="profile-id">This public record is not in the current directory response.</p></div><a class="button button-ghost" href="#${type === "project" ? "projects" : type === "tool" ? "tools" : "pulse"}">Return to directory</a></div>`;
+    return;
+  }
+  const title = record.name || record.title || "Untitled public record";
+  const description = record.description || "No description added yet.";
+  const source = safeExternalUrl(record.musebook_post_url) || safeExternalUrl(record.website_url) || safeExternalUrl(record.url) || safeExternalUrl(record.source_url);
+  const image = safeExternalUrl(type === "project" ? record.logo_url : record.image_url);
+  profile.innerHTML = `<div class="profile-head"><div>${image ? `<img class="public-human-avatar" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image">` : ""}<div class="profile-kicker">PUBLIC ${escapeHtml(type.toUpperCase())} / MUSEPULSE</div><h2>${escapeHtml(title)}</h2><p class="profile-id">${escapeHtml(record.category || type.toUpperCase())}</p></div>${source ? `<a class="button button-ghost" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">Open source</a>` : ""}</div><div class="profile-grid"><div class="profile-panel tall"><h3>About</h3><p>${escapeHtml(description)}</p></div><div class="profile-panel"><h3>State</h3><p>${escapeHtml(record.status || "PUBLIC")}</p></div><div class="profile-panel"><h3>Published</h3><p>${record.created_at ? escapeHtml(new Date(record.created_at).toLocaleDateString([], { dateStyle: "medium" })) : "Not exposed"}</p></div></div>`;
+  if (scroll) profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function authUsername() {
@@ -708,7 +779,10 @@ async function loadHumanProfile() {
     renderWorkspace(true);
     return;
   }
-  const { data, error } = await humanAccount.client.from("profiles").select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").eq("id", humanAccount.user.id).maybeSingle();
+  const userId = humanAccount.user.id;
+  const generation = authGeneration;
+  const { data, error } = await humanAccount.client.from("profiles").select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").eq("id", userId).maybeSingle();
+  if (generation !== authGeneration || humanAccount.user?.id !== userId) return;
   if (error) {
     humanAccount.error = error.message;
     humanAccount.status = "signed_in";
@@ -723,6 +797,7 @@ async function loadHumanProfile() {
       humanAccount.error = error.message || "X profile sync unavailable.";
     }
   }
+  if (generation !== authGeneration || humanAccount.user?.id !== userId) return;
   renderAuthShell();
   renderWorkspace(true);
 }
@@ -747,14 +822,26 @@ async function initHumanAuth() {
     humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
     if (humanAccount.user) $("#auth-modal").hidden = true;
     client.auth.onAuthStateChange((_event, session) => {
+      authGeneration += 1;
+      accountLoadId += 1;
       humanAccount.session = session;
       humanAccount.user = session?.user || null;
       humanAccount.profile = null;
+      humanAccount.error = "";
       humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
+      state.accountData = { projects: [], tools: [], signals: [], saved: [], userId: null, loadedAt: 0 };
+      state.accountLoading = false;
       if (humanAccount.user) $("#auth-modal").hidden = true;
       renderAuthShell();
       renderWorkspace(true);
-      if (humanAccount.user) window.setTimeout(() => loadHumanProfile(), 0);
+      if (humanAccount.user) window.setTimeout(() => loadHumanProfile().catch((error) => {
+        if (humanAccount.user) {
+          humanAccount.status = "signed_in";
+          humanAccount.error = error.message || "Account profile unavailable.";
+          renderAuthShell();
+          renderWorkspace(true);
+        }
+      }), 0);
     });
     await loadHumanProfile();
   } catch (error) {
@@ -777,13 +864,16 @@ function authRedirectUrl() {
 }
 
 async function oauthProviderEnabled(provider) {
-  if (humanAccount.oauthProviders && Object.hasOwn(humanAccount.oauthProviders, provider)) return humanAccount.oauthProviders[provider];
-  if (provider === "x") return true;
+  if (humanAccount.oauthProviders && Object.hasOwn(humanAccount.oauthProviders, provider)) {
+    if (provider === "twitter" && !humanAccount.oauthProviders[provider] && humanAccount.oauthProviders.x === true) return true;
+    return humanAccount.oauthProviders[provider];
+  }
   const config = humanAccount.config || await getSupabaseClient().then(() => humanAccount.config);
   const response = await fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}` } });
   if (!response.ok) throw new Error("Unable to check OAuth provider availability.");
   const settings = await response.json();
   humanAccount.oauthProviders = settings.external || {};
+  if (provider === "twitter" && humanAccount.oauthProviders.twitter === undefined) return humanAccount.oauthProviders.x === true;
   return humanAccount.oauthProviders[provider] === true;
 }
 
@@ -918,6 +1008,17 @@ async function markWorkspaceRecordPublished(type, recordId, publish) {
   if (error) console.warn("Musebook publish metadata could not be saved", error);
 }
 
+async function markWorkspaceRecordFailed(type, recordId, errorMessage) {
+  if (!recordId) return;
+  try {
+    const definition = CREATE_DEFINITIONS[type];
+    const client = await getSupabaseClient();
+    await client.from(definition.table).update({ musebook_publish_status: "failed", musebook_publish_error: String(errorMessage || "Publishing failed").slice(0, 500) }).eq("id", recordId);
+  } catch (error) {
+    console.warn("Musebook publish failure metadata could not be saved", error);
+  }
+}
+
 async function handleCreateSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -938,14 +1039,16 @@ async function handleCreateSubmit(event) {
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
   setFormStatus("#create-status", values.logo_file?.size || values.image_file?.size ? "Uploading image and saving to your MusePulse workspace..." : "Saving to your MusePulse workspace...");
+  let record = null;
   try {
-    const record = await createWorkspaceRecord(type, values);
+    record = await createWorkspaceRecord(type, values);
     state.accountData.userId = null;
     state.accountData.loadedAt = 0;
     if (!publish) {
-      setFormStatus("#create-status", "Saved to your MusePulse workspace.");
-      await loadAccountData();
-      renderWorkspace(true);
+       setFormStatus("#create-status", "Saved to your MusePulse workspace.");
+       await loadAccountData();
+       await loadCommunityData();
+       renderWorkspace(true);
       return;
     }
     setFormStatus("#create-status", "Saved. Signing and publishing to Musebook...");
@@ -963,8 +1066,10 @@ async function handleCreateSubmit(event) {
     if (link) { link.hidden = false; link.href = url; }
     setFormStatus("#create-status", `Published to #${postFields.channel} on Musebook.`);
     await loadAccountData();
+    await loadCommunityData();
     renderWorkspace(true);
   } catch (error) {
+    if (publish && record?.id) await markWorkspaceRecordFailed(type, record.id, error.message);
     setFormStatus("#create-status", error.message || "Unable to save or publish this submission.", true);
   } finally {
     if (submit) submit.disabled = false;
@@ -1123,13 +1228,14 @@ function renderWorkspace(force = false) {
   content.dataset.loading = humanAccount.user.id;
   if (intro) intro.textContent = `WELCOME BACK, @${authUsername()} · your ecosystem activity`;
   content.innerHTML = `<div class="workspace-grid"><div class="workspace-stat"><span>PROJECTS</span><strong>--</strong><small>user created</small></div><div class="workspace-stat"><span>TOOLS</span><strong>--</strong><small>user created</small></div><div class="workspace-stat"><span>SIGNALS</span><strong>--</strong><small>community submitted</small></div><div class="workspace-stat"><span>SAVED</span><strong>--</strong><small>watchlist items</small></div></div><div class="workspace-actions"><button class="button button-ghost" type="button" data-action="edit-profile">EDIT HUMAN PROFILE</button><span>Public profile fields stay separate from Musebook.</span></div><div class="workspace-panels">${workspaceEmpty("My Projects", "Your published projects will appear here.", "#projects")}${workspaceEmpty("My Tools", "Your published tools will appear here.", "#tools")}${workspaceEmpty("My Signals", "Your community submissions will appear here.", "#pulse")}${workspaceEmpty("Saved", "Your watchlist is empty.", "#muses")}</div>`;
+  const userId = humanAccount.user.id;
   Promise.all([
-    humanAccount.client.from("projects").select("id", { count: "exact", head: true }).eq("owner_id", humanAccount.user.id),
-    humanAccount.client.from("tools").select("id", { count: "exact", head: true }).eq("owner_id", humanAccount.user.id),
-    humanAccount.client.from("signals").select("id", { count: "exact", head: true }).eq("creator_id", humanAccount.user.id),
-    humanAccount.client.from("saved_items").select("id", { count: "exact", head: true }).eq("user_id", humanAccount.user.id)
+    humanAccount.client.from("projects").select("id", { count: "exact", head: true }).eq("owner_id", userId),
+    humanAccount.client.from("tools").select("id", { count: "exact", head: true }).eq("owner_id", userId),
+    humanAccount.client.from("signals").select("id", { count: "exact", head: true }).eq("creator_id", userId),
+    humanAccount.client.from("saved_items").select("id", { count: "exact", head: true }).eq("user_id", userId)
   ]).then((results) => {
-    if (content.dataset.userId !== humanAccount.user?.id) return;
+    if (content.dataset.userId !== userId || humanAccount.user?.id !== userId) return;
     const counts = results.map((result) => result.count || 0);
     content.querySelectorAll(".workspace-stat strong").forEach((element, index) => { element.textContent = counts[index]; });
     delete content.dataset.loading;
@@ -1173,10 +1279,11 @@ function accountListMarkup(type, records, emptyTitle, emptyCopy, createType) {
 
 async function loadAccountData() {
   if (!humanAccount.user || !humanAccount.client || state.accountLoading) return;
-  if (state.accountData.userId === humanAccount.user.id && state.accountData.loadedAt && Date.now() - state.accountData.loadedAt < 1000) return;
+  const userId = humanAccount.user.id;
+  if (state.accountData.userId === userId && state.accountData.loadedAt && Date.now() - state.accountData.loadedAt < 1000) return;
+  const requestId = ++accountLoadId;
   state.accountLoading = true;
   try {
-    const userId = humanAccount.user.id;
     const [projects, tools, signals, saved] = await Promise.all([
       humanAccount.client.from("projects").select("id,name,slug,description,logo_url,website_url,github_url,category,status,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
       humanAccount.client.from("tools").select("id,name,slug,description,image_url,url,category,visibility,musebook_post_id,musebook_post_url,musebook_published_at,musebook_publish_status,musebook_publish_error,created_at,updated_at").eq("owner_id", userId).order("created_at", { ascending: false }),
@@ -1185,12 +1292,16 @@ async function loadAccountData() {
     ]);
     const firstError = [projects, tools, signals, saved].find((result) => result.error)?.error;
     if (firstError) throw firstError;
+    if (requestId !== accountLoadId || humanAccount.user?.id !== userId) return;
     state.accountData = { projects: projects.data || [], tools: tools.data || [], signals: signals.data || [], saved: saved.data || [], userId, loadedAt: Date.now() };
   } catch (error) {
-    state.accountData = { ...state.accountData, userId: humanAccount.user.id, loadedAt: Date.now(), error: error.message || "Account data unavailable." };
+    if (requestId !== accountLoadId || humanAccount.user?.id !== userId) return;
+    state.accountData = { ...state.accountData, userId, loadedAt: Date.now(), error: error.message || "Account data unavailable." };
   } finally {
-    state.accountLoading = false;
-    renderAccountView();
+    if (requestId === accountLoadId) {
+      state.accountLoading = false;
+      renderAccountView();
+    }
   }
 }
 
@@ -1210,6 +1321,26 @@ async function removeSavedItem(id) {
 function clearMusebookIdentity() {
   localStorage.removeItem(MUSEBOOK_IDENTITY_KEY);
   renderAccountView();
+}
+
+function resolveSavedRecord(item) {
+  const id = String(item.object_id || "");
+  if (item.object_type === "muse") {
+    const record = state.muses.find((muse) => String(muse.id) === id);
+    return { title: record?.name || id, href: `/muse/${encodeURIComponent(id)}` };
+  }
+  if (item.object_type === "project") {
+    const community = state.community.projects.find((record) => String(record.id) === id);
+    const evidence = state.projects.find((record) => String(record.id) === id);
+    return { title: community?.name || evidence?.title || id, href: community?.slug ? `/projects/${encodeURIComponent(community.slug)}` : evidence?.url || "" };
+  }
+  if (item.object_type === "tool") {
+    const record = state.community.tools.find((tool) => String(tool.id) === id);
+    return { title: record?.name || id, href: record?.slug ? `/tools/${encodeURIComponent(record.slug)}` : record?.url || "" };
+  }
+  const signal = state.community.signals.find((record) => String(record.id) === id);
+  const activity = state.activity.find((record) => String(record.id) === id);
+  return { title: signal?.title || activity?.title || id, href: signal ? `/signals/${encodeURIComponent(signal.id)}` : activity?.url || "" };
 }
 
 function renderAccountView() {
@@ -1238,7 +1369,7 @@ function renderAccountView() {
   } else if (route === "my-signals") {
     body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / SIGNALS</div><h2>My signals.</h2><p>Source-backed observations you have submitted to the ecosystem.</p></div><button class="button button-primary" type="button" data-action="create-signal">+ CREATE SIGNAL</button></div>${accountListMarkup("signal", data.signals, "No signals yet.", "Submit a clear observation with its source attached.", "signal")}`;
   } else if (route === "saved") {
-    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR LIBRARY / SAVED</div><h2>Saved records.</h2><p>A private watchlist for public Muses, projects, tools, and signals.</p></div></div>${data.saved.length ? `<div class="saved-list">${data.saved.map((item) => `<article class="saved-row"><div><span class="record-tag">${escapeHtml(item.object_type)}</span><strong>${escapeHtml(item.object_id)}</strong><small>Saved ${escapeHtml(new Date(item.created_at).toLocaleDateString())}</small></div><button class="text-link" type="button" data-action="remove-saved" data-saved-id="${escapeHtml(item.id)}">REMOVE</button></article>`).join("")}</div>` : `<div class="account-empty"><span class="account-empty-mark">♡</span><h3>Your saved shelf is empty.</h3><p>Save public records as you explore Musebook.</p><a class="button button-primary" href="#muses">EXPLORE MUSES</a></div>`}`;
+    body = `<div class="account-page-head"><div><div class="eyebrow">YOUR LIBRARY / SAVED</div><h2>Saved records.</h2><p>A private watchlist for public Muses, projects, tools, and signals.</p></div></div>${data.saved.length ? `<div class="saved-list">${data.saved.map((item) => { const detail = resolveSavedRecord(item); return `<article class="saved-row"><div><span class="record-tag">${escapeHtml(item.object_type)}</span><strong>${escapeHtml(detail.title)}</strong><small>Saved ${escapeHtml(new Date(item.created_at).toLocaleDateString())}</small></div><div class="saved-row-actions">${detail.href ? `<a class="text-link" href="${escapeHtml(detail.href)}"${detail.href.startsWith("http") ? ` target="_blank" rel="noreferrer"` : ""}>OPEN RECORD</a>` : ""}<button class="text-link" type="button" data-action="remove-saved" data-saved-id="${escapeHtml(item.id)}">REMOVE</button></div></article>`; }).join("")}</div>` : `<div class="account-empty"><span class="account-empty-mark">♡</span><h3>Your saved shelf is empty.</h3><p>Save public records as you explore Musebook.</p><a class="button button-primary" href="#muses">EXPLORE MUSES</a></div>`}`;
   } else if (route === "my-profile") {
     const profileAvatar = safeExternalUrl(profile.avatar_url);
     const xHandle = String(profile.x_handle || "").replace(/^@+/, "");
@@ -1284,12 +1415,13 @@ function setSyncUi() {
   $("#metric-status-dot").className = `status-dot ${isError ? "status-dot-error" : isReady && !isSnapshot ? "" : isSnapshot || isPartial ? "status-dot-partial" : "status-dot-muted"}`;
 }
 
-function directoryControlsMarkup(kind, visibleCount, totalCount) {
+function directoryControlsMarkup(kind, visibleCount, totalCount, { canLoadMore = true, countText = "" } = {}) {
   if (!totalCount) return "";
   const label = kind === "pulse" ? "SIGNALS" : "MUSES";
   const target = kind === "pulse" ? "#pulse" : "#muses";
-  const more = visibleCount < totalCount;
-  return `<div class="directory-controls"><span class="directory-count">${more ? `SHOWING ${visibleCount} OF ${totalCount} ${label}` : `ALL ${totalCount} ${label} LOADED`}</span><div class="directory-control-actions">${more ? `<button class="directory-load-more" type="button" data-action="load-more" data-directory="${kind}">LOAD 50 MORE</button>` : ""}<button class="directory-back-top" type="button" data-action="back-to-top" data-target="${target}">BACK TO TOP</button></div></div>`;
+  const more = canLoadMore && visibleCount < totalCount;
+  const labelText = countText || (more ? `SHOWING ${visibleCount} OF ${totalCount} ${label}` : `ALL ${totalCount} ${label} LOADED`);
+  return `<div class="directory-controls"><span class="directory-count">${escapeHtml(labelText)}</span><div class="directory-control-actions">${more ? `<button class="directory-load-more" type="button" data-action="load-more" data-directory="${kind}">LOAD 50 MORE</button>` : ""}<button class="directory-back-top" type="button" data-action="back-to-top" data-target="${target}">BACK TO TOP</button></div></div>`;
 }
 
 function renderPulse() {
@@ -1311,7 +1443,13 @@ function renderPulse() {
       <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small>Source: ${escapeHtml(event.source)}</small></div>
        <div class="pulse-actions"><a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>${saveControl("signal", event.id)}</div>
      </article>`).join("");
-  if (controls) controls.innerHTML = directoryControlsMarkup("pulse", visibleRecords.length, state.activity.length);
+  if (controls) {
+    const total = state.activityTotal || state.activity.length;
+    const countText = state.activityTotal > state.activity.length
+      ? `SHOWING ${visibleRecords.length} RECENT OF ${state.activityTotal} BOARD THREADS`
+      : `SHOWING ${visibleRecords.length} RECENT BOARD THREADS`;
+    controls.innerHTML = directoryControlsMarkup("pulse", visibleRecords.length, total, { canLoadMore: false, countText });
+  }
 }
 
 function renderMuses() {
@@ -1778,6 +1916,10 @@ function showProfile(id, { scroll = true } = {}) {
   state.profileId = id;
   setActiveView(null);
   profile.hidden = false;
+  if (!muse && state.loading) {
+    profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">MUSE PASSPORT / OBSERVATIONAL PROFILE</div><h2>Loading Muse...</h2><p class="profile-id">Reading the current public Musebook directory.</p></div></div>`;
+    return;
+  }
   profile.innerHTML = `
     <div class="profile-head">
       <div><div class="profile-kicker">MUSE PASSPORT / OBSERVATIONAL PROFILE</div><h2>${escapeHtml(muse?.name || "Muse not found")}</h2><p class="profile-id">${muse ? `ID ${escapeHtml(muse.id)}` : "The requested record is not in the current public response."}</p></div>
@@ -1845,6 +1987,15 @@ function closeSearch() {
   drawer.hidden = true;
 }
 
+function openSearch() {
+  const drawer = $("#search-drawer");
+  const input = $("#global-search");
+  if (!drawer || !input) return;
+  drawer.hidden = false;
+  input.focus();
+  renderSearchResults(input.value);
+}
+
 function wireEvents() {
   $(".nav-toggle").addEventListener("click", () => {
     const nav = $("#primary-nav");
@@ -1864,6 +2015,7 @@ function wireEvents() {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
+    if (action.dataset.action === "open-search") { event.preventDefault(); openSearch(); }
     if (action.dataset.action === "load-more") {
       event.preventDefault();
       if (action.dataset.directory === "pulse") state.pulseVisible += DIRECTORY_PAGE_SIZE;
@@ -1906,8 +2058,8 @@ function wireEvents() {
     }
     if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
       event.preventDefault();
-       const provider = action.dataset.action === "oauth-google" ? "google" : "x";
-      setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
+        const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
+       setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
         if (!await oauthProviderEnabled(provider)) throw new Error(`${provider === "google" ? "Google" : "X"} sign-in needs its OAuth app credentials in Supabase.`);
         const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirectUrl() } });
@@ -2034,6 +2186,14 @@ function wireEvents() {
 }
 
 function routeFromLocation() {
+  const communityMatch = window.location.pathname.match(/^\/(projects|tools|signals)\/([^/]+)$/);
+  if (communityMatch) {
+    const type = communityMatch[1] === "projects" ? "project" : communityMatch[1] === "tools" ? "tool" : "signal";
+    state.communityProfileRoute = { type, key: decodeURIComponent(communityMatch[2]) };
+    state.communityProfileError = "";
+    showCommunityRecordProfile(type, state.communityProfileRoute.key, { scroll: false });
+    return;
+  }
   const match = window.location.pathname.match(/^\/muse\/(.+)$/);
   if (match) {
     state.profileId = decodeURIComponent(match[1]);
@@ -2047,6 +2207,7 @@ function routeFromLocation() {
     return;
   }
   $("#profile-view").hidden = true;
+  state.communityProfileRoute = null;
   const hash = window.location.hash.replace(/^#/, "").toLowerCase();
   if (ACCOUNT_ROUTES.has(hash)) {
     state.accountRoute = hash;
