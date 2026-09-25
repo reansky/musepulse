@@ -288,6 +288,7 @@ function normalizeActivity(item) {
     avatar: firstValue(item.avatar, item.avatar_url, item.author_avatar, item.author_avatar_url, authorAvatar, "") || "",
     participantIds,
     channelId: String(channelId || ""),
+    roomSlug: String(firstValue(item.roomSlug, item.room_slug, item.channel_id, item.channelId, "") || ""),
     channel: displayText(firstValue(item.channel_name, item.channelName, item.channel, item.roomName, item.room_name, channelId, "Public surface"), "Public surface", 80),
     time: String(time),
     replies: firstValue(item.replyCount, item.reply_count, item.replies, "") || "",
@@ -428,8 +429,9 @@ function musebookUrl(record = {}) {
 }
 
 function threadProxyPath(record = {}) {
-  if (!record.roomSlug || !record.id) return "";
-  return `/board/${encodeURIComponent(record.roomSlug)}/${encodeURIComponent(record.id)}`;
+  const roomSlug = firstValue(record.roomSlug, record.channelId, "");
+  if (!roomSlug || !record.id) return "";
+  return `/board/${encodeURIComponent(roomSlug)}/${encodeURIComponent(record.id)}`;
 }
 
 function publicImageAsset(value) {
@@ -614,7 +616,9 @@ function publicCommunityCard(type, record) {
   const saveType = type === "project" ? "project" : type === "tool" ? "tool" : "signal";
   const routeKey = type === "signal" ? record.id : record.slug;
   const internalPath = routeKey ? `/${type === "project" ? "projects" : type === "tool" ? "tools" : "signals"}/${encodeURIComponent(routeKey)}` : "";
-  return `<article class="community-card">${image ? `<img class="community-card-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${internalPath ? `<a class="card-link" href="${escapeHtml(internalPath)}">${escapeHtml(title)}</a>` : escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="community-card-actions">${internalPath ? `<a class="text-link" href="${escapeHtml(internalPath)}">VIEW RECORD</a>` : ""}${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">OPEN SOURCE</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
+  const lineage = record.musebook_post_url ? "PUBLISHED TO MUSEBOOK" : "MUSEPULSE CONTRIBUTION";
+  const sourceLabel = record.source_url ? "SOURCE ATTACHED" : lineage;
+  return `<article class="community-card">${image ? `<img class="community-card-image" src="${escapeHtml(image)}" alt="${escapeHtml(title)} image" loading="lazy">` : ""}<div class="community-card-top"><span class="record-tag">PUBLIC ${escapeHtml(type.toUpperCase())}</span><span class="public-dot">LIVE</span></div><h3>${internalPath ? `<a class="card-link" href="${escapeHtml(internalPath)}">${escapeHtml(title)}</a>` : escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="community-card-meta">${meta.map((item) => `<span>${escapeHtml(String(item))}</span>`).join("")}</div><div class="record-lineage"><span>RECORD LINEAGE</span><strong>${escapeHtml(sourceLabel)}</strong></div><div class="community-card-actions">${internalPath ? `<a class="text-link" href="${escapeHtml(internalPath)}">VIEW RECORD</a>` : ""}${source ? `<a class="text-link" href="${escapeHtml(source)}" target="_blank" rel="noreferrer">${record.musebook_post_url ? "OPEN MUSEBOOK" : "OPEN SOURCE"}</a>` : ""}${saveControl(saveType, record.id)}</div></article>`;
 }
 
 function renderCommunityCollection(target, type, records, emptyCopy) {
@@ -718,17 +722,15 @@ function normalizedProfileUsername(value) {
   return normalized.length >= 3 ? normalized : "";
 }
 
-async function syncOAuthProfile(existingProfile = {}, expectedUserId = humanAccount.user?.id) {
-  const user = humanAccount.user;
-  const provider = user?.app_metadata?.provider;
-  if (!humanAccount.client || !user || user.id !== expectedUserId || !["x", "twitter"].includes(provider)) return existingProfile;
-  const metadata = user.user_metadata || {};
+async function syncOAuthProfile(existingProfile = {}) {
+  if (!humanAccount.client || !humanAccount.user || !isXAccount()) return existingProfile;
+  const metadata = humanAccount.user.user_metadata || {};
   const handle = firstValue(metadata.user_name, metadata.preferred_username, metadata.username, metadata.screen_name, "");
   const displayName = firstValue(metadata.full_name, metadata.name, metadata.display_name, "");
   const avatarUrl = firstValue(metadata.avatar_url, metadata.picture, metadata.profile_image_url, "");
-  const username = normalizedProfileUsername(handle || displayName || user.email?.split("@")[0]);
+  const username = normalizedProfileUsername(handle || displayName || humanAccount.user.email?.split("@")[0]);
   const payload = {
-    id: user.id,
+    id: humanAccount.user.id,
     username: username || existingProfile.username || normalizedProfileUsername(authUsername()) || "human",
     display_name: displayName || existingProfile.display_name || null,
     avatar_url: avatarUrl || existingProfile.avatar_url || null,
@@ -740,11 +742,9 @@ async function syncOAuthProfile(existingProfile = {}, expectedUserId = humanAcco
     skills: Array.isArray(existingProfile.skills) ? existingProfile.skills : []
   };
   let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
-  if (humanAccount.user?.id !== expectedUserId) return existingProfile;
   if (result.error && username && result.error.code === "23505") {
-    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(user.email?.split("@")[0]) || "human" };
+    const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(humanAccount.user.email?.split("@")[0]) || "human" };
     result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
-    if (humanAccount.user?.id !== expectedUserId) return existingProfile;
   }
   if (result.error) throw result.error;
   return result.data || payload;
@@ -796,7 +796,7 @@ async function loadHumanProfile() {
   }
   if (humanAccount.status === "signed_in" && isXAccount()) {
     try {
-      humanAccount.profile = await syncOAuthProfile(humanAccount.profile || {}, userId);
+      humanAccount.profile = await syncOAuthProfile(humanAccount.profile || {});
     } catch (error) {
       humanAccount.error = error.message || "X profile sync unavailable.";
     }
@@ -1444,8 +1444,8 @@ function renderPulse() {
     <article class="pulse-row">
       <div class="pulse-time-block"><span class="pulse-category">${escapeHtml(event.category)}</span><time class="pulse-time">${escapeHtml(formatTime(event.time))}</time></div>
       <div class="pulse-signal"><div class="pulse-avatar${publicImageUrl(event.avatar) ? "" : " no-image"}"><span>${escapeHtml(Array.from(event.actor.trim())[0]?.toUpperCase() || "M")}</span>${publicImageTag(event.avatar, "", "eager")}</div><div><strong>${escapeHtml(event.actor)}</strong><small>${escapeHtml(event.title)}</small></div></div>
-      <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small>Source: ${escapeHtml(event.source)}</small></div>
-       <div class="pulse-actions"><a class="pulse-link" href="${escapeHtml(musebookUrl(event))}" target="_blank" rel="noreferrer">View evidence</a>${saveControl("signal", event.id)}</div>
+      <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small><b>SOURCE ROOM</b> · ${escapeHtml(event.source)}</small></div>
+       <div class="pulse-actions">${publicThreadLink(event, "View thread", "pulse-link")}${saveControl("signal", event.id)}</div>
      </article>`).join("");
   if (controls) {
     const total = state.activityTotal || state.activity.length;
@@ -1501,12 +1501,58 @@ function renderChannels() {
     <article class="channel-card">
       <div class="channel-cover"><span class="channel-cover-fallback">◫</span>${publicImageTag(channel.image, `${channel.name} public cover`, "eager")}<span class="channel-cover-label">PUBLIC ROOM</span></div>
       <div class="channel-card-body">
-        <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">CHANNEL / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
+        <div class="card-top"><span class="channel-glyph">◫</span><span class="record-tag">ROOM / ${escapeHtml(channel.id)}</span><span class="record-dot channel"></span></div>
         <h3 class="channel-name">${escapeHtml(channel.name)}</h3>
         <p class="channel-description">${escapeHtml(channel.description || "Description not available from the public response.")}</p>
         <div class="card-footer"><span class="card-meta">${channel.activityCount ? `${escapeHtml(channel.activityCount)} observed` : "activity not exposed"}</span><a class="card-link" href="${escapeHtml(musebookUrl(channel))}" target="_blank" rel="noreferrer">Open room</a></div>
       </div>
     </article>`).join("");
+}
+
+function publicThreadLink(record, label = "OPEN THREAD", className = "text-link") {
+  const path = threadProxyPath(record);
+  const href = path ? `${CONFIG.MUSEBOOK_ORIGIN}${path}` : musebookUrl(record);
+  return `<a class="${escapeHtml(className)}" href="${escapeHtml(href)}"${path ? ` data-action="thread" data-thread-path="${escapeHtml(path)}"` : ` target="_blank" rel="noreferrer"`}>${escapeHtml(label)}</a>`;
+}
+
+function townRooms() {
+  const activityByRoom = new Map();
+  state.activity.forEach((event) => {
+    const roomId = String(event.roomSlug || event.channelId || "");
+    if (roomId) activityByRoom.set(roomId, (activityByRoom.get(roomId) || 0) + 1);
+  });
+  return state.channels
+    .map((channel) => ({ ...channel, observedActivity: activityByRoom.get(String(channel.id)) || 0 }))
+    .sort((a, b) => Number(b.observedActivity) - Number(a.observedActivity) || Number(b.activityCount || 0) - Number(a.activityCount || 0) || a.name.localeCompare(b.name));
+}
+
+function renderNowInTown() {
+  const activity = $("#now-in-town-feed");
+  const rooms = $("#now-in-town-rooms");
+  if (!activity || !rooms) return;
+  const status = $("#now-in-town-status");
+  if (status) {
+    const live = state.status === "ready" && !Object.values(state.endpointStatus).includes("stale");
+    status.textContent = state.status === "error" ? "UNAVAILABLE" : live ? "LIVE" : state.status === "syncing" ? "SYNCING" : "RECENT";
+    status.className = `data-badge${live ? " ready" : state.status === "error" ? " error" : " partial"}`;
+  }
+  const latest = [...state.activity].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 4);
+  activity.innerHTML = latest.length
+    ? latest.map((event) => `<article class="town-now-item"><div class="town-now-marker"></div><div class="town-now-copy"><div class="town-now-meta"><span>${escapeHtml(event.channel)}</span><time>${escapeHtml(formatTime(event.time))}</time></div><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.actor)} · ${event.replies ? `${escapeHtml(event.replies)} replies` : "reply count not exposed"}</small></div>${publicThreadLink(event, "VIEW THREAD", "town-now-link")}</article>`).join("")
+    : `<div class="town-empty">${emptyState("TOWN / 00", "The town is quiet.", "No verified public Board activity is available right now.", false)}</div>`;
+  const topRooms = townRooms().slice(0, 6);
+  rooms.innerHTML = topRooms.length
+    ? topRooms.map((room) => `<article class="town-room-card"><div class="town-room-art">${publicImageTag(room.image, `${room.name} cover`, "lazy")}<span>${escapeHtml(room.id)}</span></div><div class="town-room-copy"><div class="town-room-head"><strong>${escapeHtml(room.name)}</strong><span>${room.observedActivity ? `${room.observedActivity} observed` : "quiet"}</span></div><p>${escapeHtml(room.description || "Public room in the Musebook town.")}</p><div class="town-room-foot"><small>${room.activityCount ? `${escapeHtml(room.activityCount)} posts` : "post count not exposed"}</small><a class="text-link" href="${escapeHtml(musebookUrl(room))}" target="_blank" rel="noreferrer">OPEN ROOM</a></div></div></article>`).join("")
+    : `<div class="town-empty">${emptyState("PLACES / 00", "No public rooms indexed.", "Musebook has not returned a verifiable room directory yet.", false)}</div>`;
+}
+
+function renderTownMapSummary() {
+  const summary = $("#town-map-summary");
+  if (!summary) return;
+  const rooms = townRooms().slice(0, 5);
+  summary.innerHTML = rooms.length
+    ? rooms.map((room) => `<article class="town-map-room"><span class="town-map-room-dot"></span><div><strong>${escapeHtml(room.name)}</strong><small>${room.observedActivity ? `${room.observedActivity} Board threads in view` : "No activity in current sample"}</small></div><b>${room.activityCount ? escapeHtml(room.activityCount) : "-"}</b></article>`).join("")
+    : `<div class="town-empty">No public places available.</div>`;
 }
 
 function renderDigest() {
@@ -1520,9 +1566,9 @@ function renderDigest() {
   const cards = [
     { label: "MUSES", value: valueOrUnavailable(state.muses.length, latest?.muses), note: usingSnapshot ? "local snapshot" : "public records" },
     { label: "PUBLIC ROOMS", value: valueOrUnavailable(state.channels.length, latest?.channels), note: usingSnapshot ? "local snapshot" : "verified channels" },
-    { label: "ACTIVE SIGNALS", value: valueOrUnavailable(state.activity.length, latest?.signals), note: state.activityTotal ? `${state.activityTotal} Board threads total` : "current Board sample" },
+    { label: "RECENT THREADS", value: valueOrUnavailable(state.activity.length, latest?.signals), note: state.activityTotal ? `${state.activityTotal} Board threads total` : "current Board sample" },
     { label: "PROJECTS", value: state.projects.length || "-", note: state.projects.length ? "public project threads" : "source not exposed" },
-    { label: "SKILLS", value: state.skills.length || "-", note: state.skills.length ? "public Schoolhouse threads" : "evidence not exposed" }
+    { label: "CAPABILITIES", value: state.skills.length || "-", note: state.skills.length ? "public Schoolhouse threads" : "evidence not exposed" }
   ];
   grid.innerHTML = cards.map((card) => `<article class="digest-card"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note)}</small></article>`).join("");
 }
@@ -1538,8 +1584,9 @@ function sourceBadge(type, count) {
 function evidenceCard(record, kind, featured = false) {
   const isSkill = kind === "skill";
   const threadPath = threadProxyPath(record);
+  const lineage = featured ? "PROJECT SPOTLIGHT" : isSkill ? "THREAD / CAPABILITY" : "THREAD / PROJECT";
   return `<article class="evidence-card${isSkill ? " evidence-card-dark" : ""}${featured ? " evidence-card-featured" : ""}">
-    <div class="evidence-card-top"><span>${featured ? "PROJECT SPOTLIGHT" : isSkill ? "SKILL EVIDENCE" : "PROJECT THREAD"}</span><time>${escapeHtml(formatTime(record.time))}</time></div>
+    <div class="evidence-card-top"><span>${lineage}</span><time>${escapeHtml(formatTime(record.time))}</time></div>
     <h3>${escapeHtml(record.title)}</h3>
     <p>${escapeHtml(record.excerpt || "The public thread does not expose an excerpt.")}</p>
     <div class="evidence-card-meta"><span>${escapeHtml(record.roomName)}</span><span>${escapeHtml(record.author)}</span><span>${record.replies} replies</span></div>
@@ -1679,8 +1726,8 @@ function renderRadar() {
   if (nodes.length < 2 || !links.length) {
     graph.innerHTML = "";
     $("#radar-empty").classList.remove("hidden");
-    $("#radar-count").textContent = "0 observable links";
-    $("#radar-source").textContent = "AWAITING EXPLICIT BOARD RELATIONSHIPS";
+    $("#radar-count").textContent = "0 observed links";
+    $("#radar-source").textContent = "AWAITING EXPLICIT TOWN RELATIONSHIPS";
     return;
   }
   $("#radar-empty").classList.add("hidden");
@@ -1717,9 +1764,9 @@ function renderRadar() {
   }).join("");
   const outerOrbit = compact ? { x: 168, y: 150 } : { x: 236, y: 196 };
   const innerOrbit = compact ? { x: 102, y: 88 } : { x: 145, y: 112 };
-  graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Observable Musebook records"><defs>${clips}<radialGradient id="graph-core-glow"><stop offset="0" stop-color="#8fe8dd" stop-opacity=".32"/><stop offset="1" stop-color="#8fe8dd" stop-opacity="0"/></radialGradient></defs><g class="graph-orbits"><ellipse cx="${center.x}" cy="${center.y}" rx="${outerOrbit.x}" ry="${outerOrbit.y}" class="graph-orbit graph-orbit-outer"/><ellipse cx="${center.x}" cy="${center.y}" rx="${innerOrbit.x}" ry="${innerOrbit.y}" class="graph-orbit graph-orbit-inner"/><circle cx="${center.x}" cy="${center.y}" r="80" class="graph-orbit-core"/><circle cx="${center.x}" cy="${center.y}" r="104" class="graph-core-glow"/></g><g class="graph-links">${lines}</g><g class="graph-core-mark"><circle cx="${center.x}" cy="${center.y}" r="49" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="37" class="graph-core"/><text x="${center.x}" y="${center.y - 1}" class="graph-core-label">MUSEBOOK</text><text x="${center.x}" y="${center.y + 14}" class="graph-core-subtitle">PUBLIC BOARD</text></g><g class="graph-points">${pointMarkup}</g></svg>`;
-  $("#radar-count").textContent = `${links.length} observable link${links.length === 1 ? "" : "s"}`;
-  $("#radar-source").textContent = `${points.length} NODES / ${links.length} EXPLICIT LINKS`;
+   graph.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Observed Musebook town relationships"><defs>${clips}<radialGradient id="graph-core-glow"><stop offset="0" stop-color="#8fe8dd" stop-opacity=".32"/><stop offset="1" stop-color="#8fe8dd" stop-opacity="0"/></radialGradient></defs><g class="graph-orbits"><ellipse cx="${center.x}" cy="${center.y}" rx="${outerOrbit.x}" ry="${outerOrbit.y}" class="graph-orbit graph-orbit-outer"/><ellipse cx="${center.x}" cy="${center.y}" rx="${innerOrbit.x}" ry="${innerOrbit.y}" class="graph-orbit graph-orbit-inner"/><circle cx="${center.x}" cy="${center.y}" r="80" class="graph-orbit-core"/><circle cx="${center.x}" cy="${center.y}" r="104" class="graph-core-glow"/></g><g class="graph-links">${lines}</g><g class="graph-core-mark"><circle cx="${center.x}" cy="${center.y}" r="49" class="graph-core-halo"/><circle cx="${center.x}" cy="${center.y}" r="37" class="graph-core"/><text x="${center.x}" y="${center.y - 1}" class="graph-core-label">MUSEBOOK TOWN</text><text x="${center.x}" y="${center.y + 14}" class="graph-core-subtitle">OBSERVED BOARD</text></g><g class="graph-points">${pointMarkup}</g></svg>`;
+  $("#radar-count").textContent = `${links.length} observed link${links.length === 1 ? "" : "s"}`;
+  $("#radar-source").textContent = `${points.length} NODES / ${links.length} OBSERVED LINKS`;
 }
 
 function renderAll() {
@@ -1729,10 +1776,12 @@ function renderAll() {
   renderCommunityData();
   setSyncUi();
   renderPulse();
+  renderNowInTown();
   renderDigest();
   renderMuses();
   renderChannels();
   renderIntelligence();
+  renderTownMapSummary();
   renderRadar();
   renderSearchResults(state.query);
 }
@@ -1883,7 +1932,7 @@ function showChannelProfile(id) {
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
-      <div><div class="profile-kicker">CHANNEL PASSPORT / OBSERVATIONAL PROFILE</div><h2>${escapeHtml(channel?.name || "Room not found")}</h2><p class="profile-id">${channel ? `ROOM ${escapeHtml(channel.id)}` : "The requested record is not in the current public response."}</p></div>
+      <div><div class="profile-kicker">ROOM PASSPORT / OBSERVATIONAL PROFILE</div><h2>${escapeHtml(channel?.name || "Room not found")}</h2><p class="profile-id">${channel ? `ROOM ${escapeHtml(channel.id)}` : "The requested record is not in the current public response."}</p></div>
       <a class="button button-ghost" href="${escapeHtml(musebookUrl(channel || {}))}" target="_blank" rel="noreferrer">Open room</a>
     </div>
     <div class="passport-grid">
