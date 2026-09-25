@@ -1493,14 +1493,8 @@ function renderPulse() {
 
 function renderMuses() {
   const grid = $("#muse-grid");
-  const sort = $("#muse-sort")?.value || "newest";
+  const sort = $("#muse-sort")?.value || "source";
   const records = [...state.muses];
-  const museDate = (muse) => {
-    const time = Date.parse(muse.createdAt || "");
-    return Number.isNaN(time) ? null : time;
-  };
-  if (sort === "newest") records.sort((a, b) => (museDate(b) ?? -Infinity) - (museDate(a) ?? -Infinity));
-  if (sort === "first") records.sort((a, b) => (museDate(a) ?? Infinity) - (museDate(b) ?? Infinity));
   if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
   const visibleRecords = records.slice(0, state.musesVisible);
@@ -2320,7 +2314,7 @@ function setActiveView(view) {
 
 function init() {
   const museSort = $("#muse-sort");
-  if (museSort) museSort.value = "newest";
+  if (museSort) museSort.value = "source";
   wireEvents();
   renderAll();
   routeFromLocation();
