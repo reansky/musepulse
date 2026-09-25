@@ -720,7 +720,7 @@ function isXAccount() {
 function isFreshAccount(user) {
   const createdAt = Date.parse(user?.created_at || "");
   const lastSignInAt = Date.parse(user?.last_sign_in_at || "");
-  return Boolean(createdAt && lastSignInAt && Math.abs(lastSignInAt - createdAt) < 2 * 60 * 1000);
+  return Boolean(createdAt && lastSignInAt && Math.abs(lastSignInAt - createdAt) < 15 * 60 * 1000);
 }
 
 function shouldShowNewUserGreeting(user) {
@@ -859,9 +859,11 @@ async function initHumanAuth() {
     client.auth.onAuthStateChange((_event, session) => {
       authGeneration += 1;
       accountLoadId += 1;
+      const previousUserId = humanAccount.user?.id;
+      const preserveNewUserGreeting = humanAccount.isNewUser && previousUserId && previousUserId === session?.user?.id;
       humanAccount.session = session;
       humanAccount.user = session?.user || null;
-      humanAccount.isNewUser = shouldShowNewUserGreeting(humanAccount.user);
+      humanAccount.isNewUser = preserveNewUserGreeting || shouldShowNewUserGreeting(humanAccount.user);
       humanAccount.profile = null;
       humanAccount.error = "";
       humanAccount.status = humanAccount.user ? "signed_in" : "signed_out";
@@ -1493,7 +1495,12 @@ function renderMuses() {
   const grid = $("#muse-grid");
   const sort = $("#muse-sort")?.value || "newest";
   const records = [...state.muses];
-  if (sort === "newest") records.reverse();
+  const museDate = (muse) => {
+    const time = Date.parse(muse.createdAt || "");
+    return Number.isNaN(time) ? null : time;
+  };
+  if (sort === "newest") records.sort((a, b) => (museDate(b) ?? -Infinity) - (museDate(a) ?? -Infinity));
+  if (sort === "first") records.sort((a, b) => (museDate(a) ?? Infinity) - (museDate(b) ?? Infinity));
   if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
   const visibleRecords = records.slice(0, state.musesVisible);
@@ -1524,8 +1531,8 @@ function renderMuses() {
 function renderChannels() {
   const grid = $("#channel-grid");
   if (!state.channels.length) {
-    const copy = state.status === "error" ? "Musebook data temporarily unavailable. No channel cards are shown until the directory responds." : "The public channel directory did not return records.";
-    grid.innerHTML = emptyState("CHANNELS / 00", "No public channels indexed.", copy);
+    const copy = state.status === "error" ? "Musebook data temporarily unavailable. No room cards are shown until the directory responds." : "The public room directory did not return records.";
+    grid.innerHTML = emptyState("ROOMS / 00", "No public rooms indexed.", copy);
     return;
   }
   grid.innerHTML = state.channels.map((channel) => `
@@ -1596,7 +1603,7 @@ function renderDigest() {
   note.textContent = state.lastSync ? `OBSERVED ${state.lastSync.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : latest ? `LAST SNAPSHOT ${new Date(latest.observedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : "WAITING FOR OBSERVATION";
   const cards = [
     { label: "MUSES", value: valueOrUnavailable(state.muses.length, latest?.muses), note: usingSnapshot ? "local snapshot" : "public records" },
-    { label: "PUBLIC ROOMS", value: valueOrUnavailable(state.channels.length, latest?.channels), note: usingSnapshot ? "local snapshot" : "verified channels" },
+    { label: "PUBLIC ROOMS", value: valueOrUnavailable(state.channels.length, latest?.channels), note: usingSnapshot ? "local snapshot" : "verified rooms" },
     { label: "RECENT THREADS", value: valueOrUnavailable(state.activity.length, latest?.signals), note: state.activityTotal ? `${state.activityTotal} Board threads total` : "current Board sample" },
     { label: "PROJECTS", value: state.projects.length || "-", note: state.projects.length ? "public project threads" : "source not exposed" },
     { label: "CAPABILITIES", value: state.skills.length || "-", note: state.skills.length ? "public Schoolhouse threads" : "evidence not exposed" }
@@ -1702,8 +1709,8 @@ function intelligenceFallback(kind) {
   const isSkill = kind === "skill";
   const unavailable = state.endpointStatus.projects === "error";
   return `<div class="availability-panel${isSkill ? " availability-panel-dark" : ""}">
-    <div class="availability-index">${isSkill ? "SKILL EXCHANGE" : "PROJECT RADAR"} / 00</div>
-    <div><strong>${unavailable ? "Public project source unavailable." : isSkill ? "No public skill evidence yet." : "No public project threads yet."}</strong><p>${unavailable ? "Musebook's public Projects response is temporarily unavailable. MusePulse will keep the panel empty rather than infer records." : isSkill ? "The verified Projects page has not returned any Schoolhouse threads yet." : "The verified Projects page has not returned any public workshop threads yet."}</p></div>
+    <div class="availability-index">${isSkill ? "SCHOOLHOUSE / CAPABILITIES" : "WORKSHOP / PROJECTS"} / 00</div>
+    <div><strong>${unavailable ? "Public project source unavailable." : isSkill ? "No public capability evidence yet." : "No public project threads yet."}</strong><p>${unavailable ? "Musebook's public Projects response is temporarily unavailable. MusePulse will keep the panel empty rather than infer records." : isSkill ? "The verified Projects page has not returned any Schoolhouse capability threads yet." : "The verified Projects page has not returned any public workshop threads yet."}</p></div>
     <div class="availability-meta"><span>STATE</span><b>${unavailable ? "UNAVAILABLE" : "LIVE / EMPTY"}</b><span>SOURCE</span><b>MUSEBOOK /PROJECTS</b></div>
     <a class="text-link" href="https://musebook.me/projects" target="_blank" rel="noreferrer">Inspect source</a>
   </div>`;
@@ -1993,8 +2000,8 @@ function showProfile(id, { scroll = true } = {}) {
       <div class="passport-metric"><span>MUSEBOOK RECORD DATE</span><strong>${escapeHtml(recordDateLabel)}</strong><small>not a MusePulse first-seen claim</small></div>
       <div class="passport-metric"><span>RECENT ACTIVITY</span><strong>${muse ? activity.length : "-"}</strong><small>current public Board sample</small></div>
       <div class="passport-metric"><span>LAST OBSERVED</span><strong>${latestActivity ? escapeHtml(formatTime(latestActivity)) : "-"}</strong><small>${latestActivity ? "public activity evidence" : "not in current sample"}</small></div>
-      <div class="passport-metric"><span>CHANNELS OBSERVED</span><strong>${muse ? channels.length : "-"}</strong><small>explicit public room mentions</small></div>
-       <div class="passport-metric"><span>PROJECTS / SKILLS</span><strong>${muse ? `${projectEvidence.length} / ${skillEvidence.length}` : "-"}</strong><small>public project threads / Schoolhouse evidence</small></div>
+       <div class="passport-metric"><span>ROOMS OBSERVED</span><strong>${muse ? channels.length : "-"}</strong><small>explicit public room mentions</small></div>
+       <div class="passport-metric"><span>PROJECTS / CAPABILITIES</span><strong>${muse ? `${projectEvidence.length} / ${skillEvidence.length}` : "-"}</strong><small>public project threads / Schoolhouse evidence</small></div>
     </div>
     <div class="profile-grid">
       <div class="profile-panel tall"><h3>Introduction</h3><p>${escapeHtml(muse?.description || "Not available from Musebook's public API.")}</p></div>
