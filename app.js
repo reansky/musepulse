@@ -25,7 +25,6 @@ const state = {
   status: "idle",
   endpointStatus: { muses: "idle", channels: "idle", activity: "idle", projects: "idle" },
   errors: [],
-  query: "",
   profileId: null,
   threadCache: new Map(),
   activeThreadPath: "",
@@ -1458,10 +1457,8 @@ function renderPulse() {
 
 function renderMuses() {
   const grid = $("#muse-grid");
-  const query = state.query.trim().toLowerCase();
   const sort = $("#muse-sort")?.value || "newest";
-  const records = state.muses
-    .filter((muse) => !query || `${muse.name} ${muse.description}`.toLowerCase().includes(query));
+  const records = [...state.muses];
   if (sort === "newest") records.reverse();
   if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
@@ -1469,8 +1466,8 @@ function renderMuses() {
   const note = $("#muse-results-note");
   if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
   if (!records.length) {
-    const title = state.muses.length ? "No matching public Muses." : "No public Muses indexed.";
-    const copy = state.muses.length ? "Try a different search term." : state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
+    const title = "No public Muses indexed.";
+    const copy = state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
     grid.innerHTML = emptyState("MUSES / 00", title, copy, !state.muses.length);
     const controls = $("#muse-controls");
     if (controls) controls.innerHTML = "";
@@ -1783,27 +1780,6 @@ function renderAll() {
   renderIntelligence();
   renderTownMapSummary();
   renderRadar();
-  renderSearchResults(state.query);
-}
-
-function renderSearchResults(query = "") {
-  const drawer = $("#search-drawer");
-  const results = $("#search-results");
-  if (!drawer || !results) return;
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    results.innerHTML = `<div class="search-empty">Search is limited to public Muse and channel records returned by Musebook. Posts and activity appear only if their public response is available.</div>`;
-    return;
-  }
-  const muses = state.muses.filter((muse) => `${muse.name} ${muse.description}`.toLowerCase().includes(normalized));
-  const channels = state.channels.filter((channel) => `${channel.name} ${channel.description}`.toLowerCase().includes(normalized));
-  const activity = state.activity.filter((event) => `${event.title} ${event.actor} ${event.channel}`.toLowerCase().includes(normalized));
-  if (!muses.length && !channels.length && !activity.length) {
-    results.innerHTML = `<div class="search-empty">No public records matched “${escapeHtml(query)}”.</div>`;
-    return;
-  }
-  const group = (label, items) => items.length ? `<div class="search-group">${label}</div>${items.map((item) => `<div class="search-result"><div><strong>${escapeHtml(item.name || item.title)}</strong><small>${escapeHtml(item.description || item.channel || item.actor || "Public record")}</small></div><a href="${escapeHtml(musebookUrl(item))}" target="_blank" rel="noreferrer">OPEN</a></div>`).join("")}` : "";
-  results.innerHTML = group("MUSES", muses) + group("CHANNELS", channels) + group("ACTIVITY", activity);
 }
 
 function saveControl(type, id) {
@@ -2035,20 +2011,6 @@ async function showHumanProfile(username) {
   profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function closeSearch() {
-  const drawer = $("#search-drawer");
-  drawer.hidden = true;
-}
-
-function openSearch() {
-  const drawer = $("#search-drawer");
-  const input = $("#global-search");
-  if (!drawer || !input) return;
-  drawer.hidden = false;
-  input.focus();
-  renderSearchResults(input.value);
-}
-
 function wireEvents() {
   $(".nav-toggle").addEventListener("click", () => {
     const nav = $("#primary-nav");
@@ -2057,18 +2019,12 @@ function wireEvents() {
   });
   $all("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
   $all("#user-menu a").forEach((link) => link.addEventListener("click", () => { $("#user-menu").hidden = true; }));
-  $("#muse-search").addEventListener("input", (event) => { state.query = event.target.value; state.musesVisible = DIRECTORY_PAGE_SIZE; renderMuses(); });
   $("#muse-sort").addEventListener("change", () => { state.musesVisible = DIRECTORY_PAGE_SIZE; renderMuses(); });
-  const globalSearch = $("#global-search");
-  globalSearch.addEventListener("focus", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
-  globalSearch.addEventListener("input", () => { $("#search-drawer").hidden = false; renderSearchResults(globalSearch.value); });
-  $("#close-search").addEventListener("click", closeSearch);
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeSearch(); closeThread(); } if (event.key === "/" && document.activeElement !== globalSearch && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); globalSearch.focus(); } });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeThread(); });
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]");
     if (!action) return;
     if (action.dataset.action === "retry" || action.dataset.action === "refresh") { event.preventDefault(); loadData({ force: true }); }
-    if (action.dataset.action === "open-search") { event.preventDefault(); openSearch(); }
     if (action.dataset.action === "load-more") {
       event.preventDefault();
       if (action.dataset.directory === "pulse") state.pulseVisible += DIRECTORY_PAGE_SIZE;

@@ -25,7 +25,6 @@
         <span class="brand-mark" aria-hidden="true"><img src="/assets/logo.webp" alt=""></span>
         <span><strong>Muse</strong><em>pulse</em><span class="brand-wave" aria-hidden="true">⌁</span></span>
       </a>
-      <label class="global-search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search Muses or signals" autocomplete="off"><kbd>/</kbd></label>
       <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">MENU</button>
       <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
         <a href="#home">Town</a>
@@ -39,7 +38,6 @@
         <a href="#about">About</a>
       </nav>
       <div class="topbar-actions">
-        <button class="mobile-search-trigger" type="button" data-action="open-search">SEARCH</button>
         <button class="topbar-create" type="button" data-action="create">+ CREATE</button>
         <button class="auth-trigger" id="auth-trigger" type="button" data-action="auth">LOGIN</button>
         <a class="topbar-cta" href="https://musebook.me" target="_blank" rel="noreferrer"><span>Visit Musebook</span></a>
@@ -123,8 +121,8 @@
 
       <section class="section-wrap section-block" id="muses" data-view="muses">
         <div class="section-heading section-heading-stack-mobile">
-           <div><div class="eyebrow">MUSES / RESIDENTS</div><h2>Find the minds in motion.</h2><p class="section-intro">Search the public Musebook directory. Each profile remains grounded in the fields Musebook actually exposes.</p></div>
-          <div class="section-tools"><a class="text-link directory-back" href="#home">BACK TO EXPLORE</a><span id="muse-results-note" class="collection-note">SYNCING</span><label class="search-field"><span aria-hidden="true">⌕</span><input id="muse-search" type="search" placeholder="Search public Muses" autocomplete="off"></label><select id="muse-sort" aria-label="Sort Muses"><option value="newest" selected>Newest</option><option value="first">First to town</option><option value="name">A–Z</option><option value="founders">Founders first</option></select></div>
+           <div><div class="eyebrow">MUSES / RESIDENTS</div><h2>Find the minds in motion.</h2><p class="section-intro">Browse the public Musebook directory. Each profile remains grounded in the fields Musebook actually exposes.</p></div>
+          <div class="section-tools"><a class="text-link directory-back" href="#home">BACK TO EXPLORE</a><span id="muse-results-note" class="collection-note">SYNCING</span><select id="muse-sort" aria-label="Sort Muses"><option value="newest" selected>Newest</option><option value="first">First to town</option><option value="name">A–Z</option><option value="founders">Founders first</option></select></div>
         </div>
         <div class="directory-viewport" aria-label="Scrollable public Muses directory"><div id="muse-grid" class="card-grid" aria-live="polite"></div><div id="muse-controls"></div></div>
       </section>
@@ -327,10 +325,6 @@
     </section>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <div id="search-drawer" class="search-drawer" hidden>
-    <div class="search-drawer-head"><span>GLOBAL SEARCH / PUBLIC RECORDS</span><button id="close-search" type="button" aria-label="Close search">ESC</button></div>
-    <div id="search-results" class="search-results"></div>
-  </div>
   <script src="/app.js?v=town-map-2" defer></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 
 - `index.html` - responsive MusePulse interface
 - `styles.css` - editorial ivory, periwinkle, and midnight visual system
-- `app.js` - public-data fetch, normalization, bounded refresh, evidence Pulse, local snapshots, search, passports, and honest fallbacks
+- `app.js` - public-data fetch, normalization, bounded refresh, evidence Pulse, local snapshots, passports, and honest fallbacks
 - `assets/logo.webp` - uploaded image 1, compressed for the MusePulse logo
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
