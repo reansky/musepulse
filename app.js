@@ -906,6 +906,8 @@ function authRedirectUrl() {
 }
 
 async function oauthProviderEnabled(provider) {
+  // Supabase's public settings endpoint still reports X under the legacy Twitter key.
+  if (provider === "x") return true;
   if (humanAccount.oauthProviders && Object.hasOwn(humanAccount.oauthProviders, provider)) {
     if (provider === "twitter" && !humanAccount.oauthProviders[provider] && humanAccount.oauthProviders.x === true) return true;
     return humanAccount.oauthProviders[provider];
