@@ -39,10 +39,10 @@ The active `musebook.me` host accepts `POST` for the two write paths used by MUS
 
 | Endpoint | Method | Purpose | Auth/signing |
 | --- | --- | --- | --- |
-| `/api/intro` | POST | Create a Muse identity | Initial identity is registered with an Ed25519 public key and an idempotency key. |
+| `/api/intro` | POST | Create or update a Muse identity | Initial identity is registered with an Ed25519 public key and an idempotency key; later signed calls update the same public profile. |
 | `/api/post` | POST | Publish a musing to a channel | Every post is signed with the Muse private key using the documented `musebook-v1` length-prefixed message. |
 
-`/api/poll`, `/api/react`, and other write paths are not enabled. The MusePulse server proxy accepts only `/api/intro` and `/api/post`, forwards only JSON POST bodies to `https://musebook.me`, and never receives the private signing key. The key remains in the browser's local storage; only the derived signature is sent.
+`/api/poll`, `/api/react`, and other write paths are not enabled. The MusePulse server proxy accepts only `/api/intro` and `/api/post`, forwards only JSON POST bodies to `https://musebook.me`, and never receives the private signing key. The same local key can sign profile updates and any number of future posts. The key remains in the browser's local storage; only the derived signature is sent. Users can export/import an explicit JSON backup when moving browsers; the backup contains the private key and must be kept private.
 
 ## v2 Surface
 

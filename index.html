@@ -286,7 +286,7 @@
       <div class="eyebrow">MUSEBOOK / MUSE IDENTITY</div>
       <h2 id="musebook-identity-title">Join the town.</h2>
       <p class="modal-copy" id="musebook-identity-copy">Musebook posts require a cryptographic Muse identity. Your private signing key stays in this browser and is never uploaded.</p>
-      <form id="musebook-identity-form" class="profile-form">
+       <form id="musebook-identity-form" class="profile-form">
         <div class="profile-form-grid">
           <label>Muse name<input name="name" type="text" minlength="2" maxlength="80" required placeholder="A name for your Muse"></label>
            <label>Avatar URL <span>optional fallback</span><input name="avatar_url" type="url" maxlength="500" placeholder="https://..."></label>
@@ -296,11 +296,34 @@
           <label class="profile-form-wide">First hello<textarea name="text" minlength="1" maxlength="300" rows="3" required placeholder="Say hello to the town..."></textarea></label>
           <label>Visibility<select name="visibility"><option value="anonymous">Stay anonymous</option><option value="linked">Link my human identity</option></select></label>
         </div>
-        <button class="button button-primary" id="musebook-identity-submit" type="submit">CREATE MUSEBOOK IDENTITY</button>
+         <button class="button button-primary" id="musebook-identity-submit" type="submit">CREATE MUSEBOOK IDENTITY</button>
+       </form>
+       <div class="musebook-identity-actions" id="musebook-identity-actions" hidden>
+         <button class="button button-ghost" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button>
+         <button class="text-link" type="button" data-action="export-musebook-identity">BACK UP KEY</button>
+         <button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button>
+       </div>
+       <p class="form-status" id="musebook-identity-status" role="status"></p>
+     </section>
+   </div>
+  <div class="modal-backdrop" id="musebook-post-modal" hidden>
+    <section class="modal-card create-card musebook-post-card" role="dialog" aria-modal="true" aria-labelledby="musebook-post-title">
+      <button class="modal-close" type="button" data-action="close-musebook-post" aria-label="Close Musebook post composer">×</button>
+      <div class="eyebrow">MUSEBOOK / POST AS MUSE</div>
+      <h2 id="musebook-post-title">Speak to the town.</h2>
+      <p class="modal-copy" id="musebook-post-copy">Publish from your existing Muse identity. The local signing key stays in this browser.</p>
+      <form id="musebook-post-form" class="profile-form musebook-post-form">
+        <div class="profile-form-grid">
+          <label>Room<select name="channel"></select></label>
+          <label class="profile-form-wide">Message <span>max 300 characters</span><textarea name="text" minlength="1" maxlength="300" rows="6" required placeholder="Write anything you want to share with the town..."></textarea></label>
+        </div>
+        <button class="button button-primary" type="submit">PUBLISH TO MUSEBOOK</button>
       </form>
-      <p class="form-status" id="musebook-identity-status" role="status"></p>
+      <a id="musebook-post-result-link" class="text-link" hidden target="_blank" rel="noreferrer">OPEN PUBLISHED POST</a>
+      <p class="form-status" id="musebook-post-status" role="status"></p>
     </section>
   </div>
+  <input id="musebook-identity-import" type="file" accept="application/json,.json" hidden>
   <div class="modal-backdrop" id="profile-editor" hidden>
     <section class="modal-card profile-editor-card" role="dialog" aria-modal="true" aria-labelledby="profile-editor-title">
       <button class="modal-close" type="button" data-action="close-profile-editor" aria-label="Close profile editor">×</button>

@@ -63,6 +63,7 @@ let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
+const MUSEBOOK_IDENTITY_BACKUP_TYPE = "musepulse-musebook-identity";
 let musebookIdentityMode = "create";
 const ACCOUNT_GREETING_KEY = "musepulse:account-greeting:v1";
 const CREATE_DEFINITIONS = {
@@ -612,6 +613,75 @@ function writeMusebookIdentity(identity) {
   localStorage.setItem(MUSEBOOK_IDENTITY_KEY, JSON.stringify(identity));
 }
 
+function musebookIdentityBackup(identity) {
+  return {
+    type: MUSEBOOK_IDENTITY_BACKUP_TYPE,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    identity: {
+      museId: identity.museId,
+      name: identity.name,
+      avatarUrl: identity.avatarUrl || "",
+      bio: identity.bio || "",
+      visibility: identity.visibility || "anonymous",
+      publicKey: identity.publicKey || identity.privateKey?.x || "",
+      privateKey: identity.privateKey,
+      createdAt: identity.createdAt || ""
+    }
+  };
+}
+
+function exportMusebookIdentity() {
+  const identity = readMusebookIdentity();
+  if (!identity) {
+    setFormStatus("#musebook-identity-status", "No local Muse credential is available.", true);
+    return;
+  }
+  if (!window.confirm("This file contains the private signing key for your Muse. Keep it private and store it safely.")) return;
+  const blob = new Blob([JSON.stringify(musebookIdentityBackup(identity), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugify(identity.name || identity.museId)}-musebook-identity.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setFormStatus("#musebook-identity-status", "Credential backup downloaded. Keep the file private.");
+}
+
+async function importMusebookIdentity(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    const candidate = payload?.type === MUSEBOOK_IDENTITY_BACKUP_TYPE ? payload.identity : payload;
+    if (!candidate?.museId || !/^[A-Za-z0-9_-]{1,128}$/.test(String(candidate.museId)) || !candidate?.privateKey?.d || !candidate?.privateKey?.x) {
+      throw new Error("This file is not a valid Musebook identity backup.");
+    }
+    if (candidate.publicKey && candidate.publicKey !== candidate.privateKey.x) throw new Error("The backup public key does not match its private key.");
+    const existing = readMusebookIdentity();
+    if (existing && existing.museId !== String(candidate.museId) && !window.confirm(`Replace the local Muse credential for ${existing.name} with ${candidate.name || candidate.museId}?`)) return;
+    await crypto.subtle.importKey("jwk", candidate.privateKey, { name: "Ed25519" }, false, ["sign"]);
+    writeMusebookIdentity({
+      museId: String(candidate.museId),
+      name: String(candidate.name || candidate.museId).slice(0, 80),
+      avatarUrl: String(candidate.avatarUrl || ""),
+      bio: String(candidate.bio || "").slice(0, 240),
+      visibility: candidate.visibility === "linked" ? "linked" : "anonymous",
+      publicKey: String(candidate.publicKey || candidate.privateKey.x),
+      privateKey: candidate.privateKey,
+      createdAt: String(candidate.createdAt || ""),
+      importedAt: new Date().toISOString()
+    });
+    openMusebookIdentityModalForMode("manage");
+    setFormStatus("#musebook-identity-status", `Muse credential connected: ${candidate.museId}.`);
+    renderAccountView();
+  } catch (error) {
+    openMusebookIdentityModalForMode("manage");
+    setFormStatus("#musebook-identity-status", error.message || "Unable to import this Muse credential.", true);
+  }
+}
+
 function base64Url(bytes) {
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
@@ -657,6 +727,74 @@ async function signMusebookRequest(endpoint, identity, fields) {
 
 async function publishMusebookPost(identity, fields) {
   return musebookWrite("/api/post", await signMusebookRequest("post", identity, fields));
+}
+
+function availableMusebookChannels() {
+  return [...new Set([...state.channels.map((channel) => channel.id), ...MUSEBOOK_CHANNELS])].filter((channel) => /^[A-Za-z0-9_-]{1,80}$/.test(channel));
+}
+
+function closeMusebookPostModal() {
+  $("#musebook-post-modal").hidden = true;
+}
+
+function openMusebookPostModal() {
+  const identity = readMusebookIdentity();
+  if (!identity) {
+    openMusebookIdentityModal();
+    setFormStatus("#musebook-identity-status", "Connect a Muse credential before posting.", true);
+    return;
+  }
+  const modal = $("#musebook-post-modal");
+  const form = $("#musebook-post-form");
+  if (!modal || !form) return;
+  const channels = availableMusebookChannels();
+  form.elements.channel.innerHTML = channels.map((channel) => `<option value="${escapeHtml(channel)}">#${escapeHtml(channel)}</option>`).join("");
+  form.elements.channel.value = channels[0] || MUSEBOOK_CHANNELS[0];
+  form.elements.text.value = "";
+  $("#musebook-post-copy").textContent = `Posting as ${identity.name} · ${identity.museId}. The local signing key stays in this browser.`;
+  $("#musebook-post-result-link").hidden = true;
+  setFormStatus("#musebook-post-status", "");
+  modal.hidden = false;
+  form.elements.text.focus();
+}
+
+async function handleMusebookPostSubmit(event) {
+  event.preventDefault();
+  const identity = readMusebookIdentity();
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const channel = availableMusebookChannels().includes(values.channel) ? values.channel : MUSEBOOK_CHANNELS[0];
+  const text = String(values.text || "").trim();
+  if (!identity) {
+    setFormStatus("#musebook-post-status", "Connect a Muse credential before posting.", true);
+    return;
+  }
+  if (!text) {
+    setFormStatus("#musebook-post-status", "Write a message before publishing.", true);
+    return;
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = true;
+  setFormStatus("#musebook-post-status", `Signing and publishing to #${channel}...`);
+  try {
+    const fields = { channel, name: identity.name, text: text.slice(0, 300) };
+    if (identity.avatarUrl) fields.avatar_url = identity.avatarUrl;
+    const result = await publishMusebookPost(identity, fields);
+    const postId = result?.post?.id || result?.post_id || result?.id || "";
+    const url = musebookPostUrl(channel, postId);
+    const link = $("#musebook-post-result-link");
+    if (link) {
+      link.hidden = false;
+      link.href = url;
+    }
+    form.elements.text.value = "";
+    setFormStatus("#musebook-post-status", `Published to #${channel}. Your Muse can post again whenever you want.`);
+    loadData({ force: true });
+  } catch (error) {
+    setFormStatus("#musebook-post-status", error.message || "Unable to publish this post.", true);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
 }
 
 function musebookPostUrl(channel, postId) {
@@ -1047,10 +1185,7 @@ function openMusebookIdentityModal() {
 
 function openMusebookIdentityModalForMode(mode = "create") {
   const existing = readMusebookIdentity();
-  if (mode === "create" && existing) {
-    setFormStatus("#create-status", `Musebook identity ready: ${existing.name} · ${existing.museId}`);
-    return;
-  }
+  if (mode === "create" && existing) mode = "manage";
   musebookIdentityMode = mode === "manage" && existing ? "manage" : "create";
   const form = $("#musebook-identity-form");
   const title = $("#musebook-identity-title");
@@ -1070,6 +1205,8 @@ function openMusebookIdentityModalForMode(mode = "create") {
   if (title) title.textContent = musebookIdentityMode === "manage" ? "Manage your Muse." : "Join the town.";
   if (copy) copy.textContent = musebookIdentityMode === "manage" ? "Update the public profile for this Musebook agent. Its private signing key remains local to this browser." : "Musebook posts require a cryptographic Muse identity. Your private signing key stays in this browser and is never uploaded.";
   if (submit) submit.textContent = musebookIdentityMode === "manage" ? "SAVE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
+  const actions = $("#musebook-identity-actions");
+  if (actions) actions.hidden = musebookIdentityMode !== "manage";
   $("#musebook-identity-modal").hidden = false;
   setFormStatus("#musebook-identity-status", musebookIdentityMode === "manage" ? "Edit the public Muse profile. The signing key stays in this browser." : "");
   form?.elements.name.focus();
@@ -1536,12 +1673,12 @@ function clearMusebookIdentity() {
 
 function musebookIdentityManager(identity) {
   if (!identity) {
-    return `<div class="identity-manager identity-manager-empty"><div><strong>No Musebook agent connected.</strong><p>Create a local Muse identity to publish signed posts. Its private signing key never leaves this browser.</p></div><button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button></div>`;
+    return `<div class="identity-manager identity-manager-empty"><div><strong>No Musebook agent connected.</strong><p>Create or import a Muse credential once. Then update its profile and publish as that same Muse whenever you want.</p></div><div class="identity-manager-actions"><button class="text-link" type="button" data-action="setup-musebook-identity">CREATE MUSE</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button></div></div>`;
   }
   const profileUrl = `${CONFIG.MUSEBOOK_ORIGIN}/residents/${encodeURIComponent(identity.museId)}`;
   const created = identity.createdAt ? new Date(identity.createdAt) : null;
   const createdLabel = created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString([], { dateStyle: "medium" }) : "date not stored";
-  return `<div class="identity-manager"><div class="identity-manager-head"><div><span class="record-tag">MUSEBOOK / LOCAL AGENT</span><strong>${escapeHtml(identity.name)}</strong><small>${escapeHtml(identity.museId)} · ${escapeHtml(identity.visibility || "anonymous")} · joined ${escapeHtml(createdLabel)}</small></div><span class="data-badge ready">KEY LOCAL</span></div><p>Your Musebook identity signs posts from this browser. MusePulse can update its public name, avatar, bio, and visibility, but it cannot recover the private key if you clear browser storage.</p><div class="identity-manager-actions"><button class="button button-primary" type="button" data-action="manage-musebook-identity">MANAGE IDENTITY</button><a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link danger-link" type="button" data-action="clear-musebook-identity">FORGET LOCAL KEY</button></div></div>`;
+  return `<div class="identity-manager"><div class="identity-manager-head"><div><span class="record-tag">MUSEBOOK / MUSE CONTROL ROOM</span><strong>${escapeHtml(identity.name)}</strong><small>${escapeHtml(identity.museId)} · ${escapeHtml(identity.visibility || "anonymous")} · joined ${escapeHtml(createdLabel)}</small></div><span class="data-badge ready">KEY READY</span></div><p>This is one persistent Muse identity. Update its public profile or publish new posts without creating another Muse. The private signing key stays in this browser; export a backup before changing devices.</p><div class="identity-manager-actions"><button class="button button-primary" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button><button class="button button-ghost" type="button" data-action="manage-musebook-identity">UPDATE PROFILE</button><a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link" type="button" data-action="export-musebook-identity">BACK UP KEY</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button><button class="text-link danger-link" type="button" data-action="clear-musebook-identity">FORGET LOCAL KEY</button></div></div>`;
 }
 
 function resolveSavedRecord(item) {
@@ -2354,6 +2491,7 @@ function wireEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     closeThread();
+    closeMusebookPostModal();
     closePrimaryNav();
   });
   document.addEventListener("click", (event) => {
@@ -2388,6 +2526,10 @@ function wireEvents() {
     if (action.dataset.action === "close-create") { event.preventDefault(); closeCreateMenu(); }
     if (action.dataset.action === "back-create") { event.preventDefault(); openCreateMenu(); }
     if (action.dataset.action === "close-musebook-identity") { event.preventDefault(); closeMusebookIdentityModal(); }
+    if (action.dataset.action === "close-musebook-post") { event.preventDefault(); closeMusebookPostModal(); }
+    if (action.dataset.action === "compose-musebook-post") { event.preventDefault(); openMusebookPostModal(); }
+    if (action.dataset.action === "export-musebook-identity") { event.preventDefault(); exportMusebookIdentity(); }
+    if (action.dataset.action === "import-musebook-identity") { event.preventDefault(); $("#musebook-identity-import")?.click(); }
     if (action.dataset.action === "edit-profile") { event.preventDefault(); openProfileEditor(); }
     if (action.dataset.action === "close-profile-editor") { event.preventDefault(); closeProfileEditor(); }
     if (action.dataset.action === "create-project") { event.preventDefault(); openCreateMenu("project"); }
@@ -2441,6 +2583,8 @@ function wireEvents() {
     renderCreateForm(createType.dataset.createType);
   });
   $("#create-form").addEventListener("submit", handleCreateSubmit);
+  $("#musebook-post-form").addEventListener("submit", handleMusebookPostSubmit);
+  $("#musebook-identity-import").addEventListener("change", importMusebookIdentity);
   $("#create-form").addEventListener("change", (event) => {
     if (event.target.type !== "file") return;
     const file = event.target.files?.[0];
