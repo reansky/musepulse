@@ -1415,6 +1415,27 @@ function renderWorkspace(force = false) {
 }
 
 const ACCOUNT_ROUTES = new Set(["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"]);
+const VIEW_ROUTES = Object.freeze({
+  top: "home",
+  home: "home",
+  "now-in-town": "home",
+  digest: "home",
+  pulse: "pulse",
+  muses: "muses",
+  channels: "muses",
+  projects: "projects",
+  tools: "tools",
+  skills: "skills",
+  articles: "articles",
+  workspace: "workspace",
+  radar: "graph",
+  graph: "graph",
+  methodology: "method",
+  about: "about",
+  method: "method",
+  "for-muses": "method"
+});
+const NAVIGATION_HASHES = new Set([...Object.keys(VIEW_ROUTES), ...ACCOUNT_ROUTES]);
 
 function accountRouteLabel(route) {
   return {
@@ -1661,18 +1682,19 @@ async function loadMoreActivity() {
 function renderMuses() {
   const grid = $("#muse-grid");
   const sort = $("#muse-sort")?.value || "newest";
-  const records = [...state.muses];
+  const records = state.muses.map((muse, sourceIndex) => ({ ...muse, sourceIndex }));
   const dateValue = (muse) => {
     const time = new Date(muse.createdAt).getTime();
     return Number.isFinite(time) ? time : 0;
   };
-  if (sort === "newest") records.sort((a, b) => dateValue(b) - dateValue(a));
-  if (sort === "first") records.sort((a, b) => dateValue(a) - dateValue(b));
+  const hasDates = records.some((muse) => dateValue(muse) > 0);
+  if (sort === "newest") records.sort((a, b) => hasDates ? dateValue(b) - dateValue(a) || b.sourceIndex - a.sourceIndex : b.sourceIndex - a.sourceIndex);
+  if (sort === "first") records.sort((a, b) => hasDates ? dateValue(a) - dateValue(b) || a.sourceIndex - b.sourceIndex : a.sourceIndex - b.sourceIndex);
   if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
   const visibleRecords = records.slice(0, state.musesVisible);
   const note = $("#muse-results-note");
-  if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}` : "NO RECORDS";
+  if (note) note.textContent = records.length ? `SHOWING ${visibleRecords.length} / ${records.length}${!hasDates && sort !== "name" && sort !== "founders" ? " · SOURCE ORDER" : ""}` : "NO RECORDS";
   if (!records.length) {
     const title = "No public Muses indexed.";
     const copy = state.status === "error" ? "Musebook data temporarily unavailable. The directory will remain empty rather than show invented records." : "The public directory did not return named Muse records.";
@@ -2283,16 +2305,38 @@ async function showHumanProfile(username) {
   profile.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function closePrimaryNav() {
+  $("#primary-nav")?.classList.remove("open");
+  $(".nav-toggle")?.setAttribute("aria-expanded", "false");
+}
+
+function scrollToRouteTarget(hash) {
+  const target = document.getElementById(hash === "top" ? "home" : hash);
+  if (!target) return;
+  requestAnimationFrame(() => target.scrollIntoView({ behavior: "auto", block: "start" }));
+}
+
 function wireEvents() {
   $(".nav-toggle").addEventListener("click", () => {
     const nav = $("#primary-nav");
     const open = nav.classList.toggle("open");
     $(".nav-toggle").setAttribute("aria-expanded", String(open));
   });
-  $all("#primary-nav a").forEach((link) => link.addEventListener("click", () => $("#primary-nav").classList.remove("open")));
+  $all("#primary-nav a").forEach((link) => link.addEventListener("click", (event) => {
+    closePrimaryNav();
+    const href = link.getAttribute("href");
+    if (!href?.startsWith("#")) return;
+    event.preventDefault();
+    history.pushState({}, "", `/${href}`);
+    routeFromLocation();
+  }));
   $all("#user-menu a").forEach((link) => link.addEventListener("click", () => { $("#user-menu").hidden = true; }));
   $("#muse-sort").addEventListener("change", () => { state.musesVisible = DIRECTORY_PAGE_SIZE; renderMuses(); });
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeThread(); });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeThread();
+    closePrimaryNav();
+  });
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]");
     if (!action) return;
@@ -2467,6 +2511,10 @@ function wireEvents() {
 }
 
 function routeFromLocation() {
+  const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+  closePrimaryNav();
+  const detailPath = /^\/(?:muse|profile|projects|tools|signals|articles)\//.test(window.location.pathname);
+  if (hash && NAVIGATION_HASHES.has(hash) && detailPath) history.replaceState({}, "", `/#${hash}`);
   const articleMatch = window.location.pathname.match(/^\/articles(?:\/([^/]+))?$/);
   if (articleMatch) {
     if (articleMatch[1]) {
@@ -2500,7 +2548,6 @@ function routeFromLocation() {
   }
   $("#profile-view").hidden = true;
   state.communityProfileRoute = null;
-  const hash = window.location.hash.replace(/^#/, "").toLowerCase();
   if (ACCOUNT_ROUTES.has(hash)) {
     state.accountRoute = hash;
     setActiveView("account");
@@ -2515,27 +2562,11 @@ function routeFromLocation() {
     renderAccountView();
     return;
   }
-  const view = {
-    top: "home",
-    home: "home",
-    pulse: "pulse",
-    muses: "muses",
-    channels: "muses",
-    projects: "projects",
-    tools: "tools",
-    skills: "skills",
-    articles: "articles",
-    workspace: "workspace",
-    radar: "graph",
-    graph: "graph",
-    methodology: "method",
-    about: "about",
-    method: "method",
-    "for-muses": "method"
-  }[hash] || "home";
+  const view = VIEW_ROUTES[hash] || "home";
   setActiveView(view);
   if (view === "workspace") ensureHumanAuth();
   ensureViewData(view);
+  if (hash) scrollToRouteTarget(hash);
 }
 
 function setActiveView(view) {
@@ -2544,9 +2575,7 @@ function setActiveView(view) {
   $("main").querySelectorAll("[data-view]").forEach((section) => { section.hidden = section.dataset.view !== view; });
   $all("#primary-nav a").forEach((link) => {
     const target = link.getAttribute("href")?.replace(/^#/, "").toLowerCase();
-    const targetView = {
-      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", articles: "articles", workspace: "workspace", radar: "graph", methodology: "method", about: "about"
-    }[target] || "home";
+    const targetView = VIEW_ROUTES[target] || "home";
     const active = targetView === view;
     link.classList.toggle("active", active);
     if (active) link.setAttribute("aria-current", "page");

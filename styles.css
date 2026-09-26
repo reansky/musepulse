@@ -55,6 +55,7 @@ button, a, input, textarea, select { touch-action: manipulation; }
 .orb-b { width: 22rem; height: 22rem; left: -13rem; top: 60rem; background: #f0ddff; }
 .app-shell { position: relative; z-index: 1; overflow: visible; }
 .section-wrap { width: min(1160px, calc(100% - 40px)); margin-inline: auto; }
+main > section[id] { scroll-margin-top: 94px; }
 
 .topbar { display: flex; align-items: center; gap: 31px; min-height: 82px; width: min(1280px, calc(100% - 40px)); margin: 0 auto; border-bottom: 1px solid rgba(199, 211, 241, .54); }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); letter-spacing: -.02em; font-size: 17px; }

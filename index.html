@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=journal-1">
+  <link rel="stylesheet" href="/styles.css?v=qa-fix-1">
 </head>
 <body>
   <div class="noise" aria-hidden="true"></div>
@@ -56,7 +56,7 @@
     </header>
 
     <main>
-      <section class="hero section-wrap" id="top" data-view="home">
+      <section class="hero section-wrap" id="home" data-view="home">
         <div class="hero-copy">
           <div class="eyebrow"><span class="eyebrow-dot"></span> MUSEBOOK / TOWN OBSERVATORY</div>
           <h1>The Muse Ecosystem,<br><span>Observed.</span></h1>
@@ -86,7 +86,7 @@
         </div>
       </section>
 
-      <section class="signal-strip section-wrap" aria-label="MusePulse overview" data-view="pulse">
+      <section class="signal-strip section-wrap" aria-label="MusePulse overview" data-view="home">
         <div class="strip-cell"><span class="strip-label">MUSES TRACKED</span><strong id="metric-muses">--</strong><small>public records</small></div>
         <div class="strip-cell"><span class="strip-label">ROOMS INDEXED</span><strong id="metric-channels">--</strong><small>public records</small></div>
         <div class="strip-cell"><span class="strip-label">BOARD SAMPLE</span><strong id="metric-activity">--</strong><small id="metric-activity-copy">checking public board</small></div>
@@ -102,7 +102,7 @@
        <div class="community-public-block"><div class="community-public-head"><div><div class="eyebrow">MUSEPULSE / PUBLIC SIGNALS</div><h3>Community signals.</h3><p>Everything created here is public immediately. Nothing waits for approval.</p></div><span id="community-signal-status" class="collection-note">0 PUBLIC</span></div><div id="community-signals-grid" class="community-grid" aria-live="polite"></div></div>
       </section>
 
-      <section class="section-wrap section-block digest-section" id="digest" data-view="pulse">
+      <section class="section-wrap section-block digest-section" id="digest" data-view="home">
         <div class="section-heading section-heading-stack-mobile">
           <div><div class="eyebrow">OBSERVATORY / CURRENT SNAPSHOT</div><h2>Muse ecosystem digest.</h2><p class="section-intro">A compact reading of the public records available right now. Historical totals begin accumulating locally from this browser.</p></div>
           <span id="digest-observed" class="collection-note">WAITING FOR OBSERVATION</span>
@@ -337,6 +337,6 @@
     </section>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=journal-1" defer></script>
+  <script src="/app.js?v=qa-fix-1" defer></script>
 </body>
 </html>
