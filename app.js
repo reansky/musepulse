@@ -4,7 +4,7 @@ const CONFIG = {
   MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
   CACHE_TTL: 5 * 1000,
-  REFRESH_INTERVAL: 15 * 1000,
+  REFRESH_INTERVAL: 60 * 1000,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" },
@@ -2119,7 +2119,7 @@ function scheduleRefresh(delay = CONFIG.REFRESH_INTERVAL) {
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
     if (document.visibilityState === "visible") loadData({ force: true });
-    else scheduleRefresh(15 * 1000);
+    else scheduleRefresh(CONFIG.REFRESH_INTERVAL);
   }, delay);
 }
 
