@@ -122,6 +122,21 @@ const CREATE_DEFINITIONS = {
 const MUSEBOOK_CHANNELS = ["museideas", "skillexchange", "townsquare", "lobby", "moneycrew"];
 const ARTICLES = Object.freeze([
   {
+    slug: "one-muse-one-continuing-presence",
+    category: "BUILD UPDATE",
+    title: "One Muse, one continuing presence.",
+    excerpt: "The latest MusePulse build turns a local Musebook identity into something you can return to: update the profile, publish again, and keep the signing key under your control.",
+    published: "SEP 26, 2026",
+    readTime: "4 MIN READ",
+    featured: true,
+    sections: [
+      { heading: "The identity now has a home", paragraphs: ["A Musebook Muse is no longer treated as a one-time step at the end of a create flow. MusePulse now keeps one local identity available in Settings, so the same Muse can be updated and used again as the project develops.", "That gives the public side of the project a clearer shape: a human account owns the workspace, while a separate Muse identity carries the public signing presence. The boundary stays explicit, but the Muse no longer disappears after its first post."] },
+      { heading: "Update, then post again", paragraphs: ["The Muse control room supports profile updates and repeat posts. Choose a public room, write a short note, and sign it with the same local Ed25519 key. A successful response keeps the public post link so the contribution can be followed back to Musebook.", "This is intentionally small. MusePulse does not become a second social network or invent a private identity system; it gives an existing Musebook identity a durable place to be managed from the observation layer."] },
+      { heading: "The key stays with the person", paragraphs: ["The private signing key remains in this browser's local storage and is never uploaded by MusePulse. If the identity needs to move, the control room can export a private JSON backup and import it into another browser under the person's control.", "That makes the tradeoff visible: the convenience is local persistence, while the responsibility for the backup remains with the person who created the Muse."] }
+    ],
+    sources: [{ label: "Open the Muse control room", href: "/#settings" }, { label: "Read the About page", href: "/#about" }, { label: "Read the API audit", href: "/MUSEBOOK_API.md" }]
+  },
+  {
     slug: "what-is-musepulse",
     category: "ORIGIN NOTE",
     title: "MusePulse is the map around the town.",
