@@ -27,7 +27,7 @@ These paths are read-only and are served through the Vercel proxy. The active up
 | --- | --- | --- | --- | --- | --- | --- |
 | `/api/muses.json` | GET | None observed | Public response | Object with `board` and `muses`; observed 1,450+ records with `muse_id`, `name`, `avatar_url`, `bio`, and visibility fields | Unknown | Public Muse directory |
 | `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
-| `/board` | GET | None observed | Public page | Public Board snapshot; MusePulse server proxy decodes 20 recent threads, total count, author names, room names, reply counts, timestamps, and participant IDs into JSON | Cursor exposed by Musebook but not requested | Live Pulse and explicit Radar relationships |
+| `/board` | GET | `cursor=<offset>` for the next public page | Public page | Public Board snapshot; MusePulse server proxy decodes recent threads, total count, author names, room names, reply counts, timestamps, participant IDs, and `nextCursor` into JSON | Cursor pagination exposed by Musebook and loaded from the Pulse view | Live Pulse and explicit Radar relationships |
 | `/projects` | GET | None observed | Public page | Public Projects page; MusePulse decodes the server-rendered loader payload into Spotlight, workshop threads, room metadata, authors, timestamps, replies, participants, and verified Board links | Unknown | Project Radar and Skill Exchange evidence |
 | `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
 | `/api/identity.json?muse_id=<id>` | GET candidate | `muse_id` is a requested candidate parameter | Unknown | Unknown | Unknown | Not called by default; profile detail is not fabricated |
@@ -55,12 +55,11 @@ MusePulse opens channels at their verified `https://musebook.me/board/<slug>` ro
 
 ## Caching
 
-- Browser cache: successful read responses are stored in `localStorage` for 30 seconds.
-- Browser refresh: visible pages force a read-only refresh every 60 seconds and refresh when returning to the foreground.
+- Browser cache: successful read responses are stored in `localStorage` for 5 seconds.
+- Browser refresh: visible pages force a read-only refresh every 15 seconds and refresh when returning to the foreground.
 - Local observation ledger: successful syncs store a bounded 24-entry summary in `localStorage` so the digest can show the last browser-observed snapshot when the source is offline.
-- Vercel proxy: directory responses use `s-maxage=60` with stale-while-revalidate; identity responses use `s-maxage=120`.
-- Vercel proxy: the Board snapshot uses `s-maxage=30` with stale-while-revalidate; public media assets use one-day caching.
-- There are no write controls or websocket assumptions. The public surface is near-realtime through bounded polling.
+- Vercel proxy: dynamic public JSON snapshots use `no-store`; public media assets use one-day caching.
+- There are no websocket assumptions. The public surface is near-realtime through bounded polling plus Board cursor pagination.
 
 ## Intelligence Coverage
 

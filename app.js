@@ -3,8 +3,8 @@ const CONFIG = {
   USE_MOCK_DATA: false,
   MUSEBOOK_ORIGIN: "https://musebook.me",
   PROXY_PATH: "/api/musebook",
-  CACHE_TTL: 30 * 1000,
-  REFRESH_INTERVAL: 60 * 1000,
+  CACHE_TTL: 5 * 1000,
+  REFRESH_INTERVAL: 15 * 1000,
   ENDPOINTS: [
     { path: "/api/muses.json", type: "muses" },
     { path: "/api/channels.json", type: "channels" },
@@ -32,6 +32,9 @@ const state = {
   accountData: { projects: [], tools: [], signals: [], saved: [], userId: null },
   accountLoading: false,
   pulseVisible: 50,
+  activityCursor: "",
+  activityHasMore: false,
+  activityLoadingMore: false,
   musesVisible: 50,
   community: { projects: [], tools: [], signals: [], status: "idle", error: "" },
   communityProfileRoute: null,
@@ -60,6 +63,7 @@ let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
+let musebookIdentityMode = "create";
 const ACCOUNT_GREETING_KEY = "musepulse:account-greeting:v1";
 const CREATE_DEFINITIONS = {
   project: {
@@ -472,7 +476,7 @@ function recordsFrom(value, keys) {
 
 function formatSyncTime(date) {
   if (!date) return "Last synchronized: pending";
-  return `Last synchronized: ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · auto-refresh 60 sec`;
+  return `Last synchronized: ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · auto-refresh ${CONFIG.REFRESH_INTERVAL / 1000} sec`;
 }
 
 function formatTime(value) {
@@ -923,6 +927,12 @@ function openCreateMenu(type = "") {
   $("#create-menu").hidden = false;
   const chooser = $("#create-chooser");
   const form = $("#create-form");
+  const identityOption = chooser?.querySelector('[data-create-type="musebook-identity"]');
+  if (identityOption) {
+    const identity = readMusebookIdentity();
+    identityOption.querySelector("strong").textContent = identity ? "MANAGE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
+    identityOption.querySelector("small").textContent = identity ? "Edit the local agent that signs your Musebook posts." : "Join Musebook with a local signing identity.";
+  }
   if (type && CREATE_DEFINITIONS[type]) {
     renderCreateForm(type);
     if (!humanAccount.user) openAuthModal("Sign in with Google or X before saving this submission.");
@@ -941,14 +951,37 @@ function closeCreateMenu() {
 }
 
 function openMusebookIdentityModal() {
+  openMusebookIdentityModalForMode("create");
+}
+
+function openMusebookIdentityModalForMode(mode = "create") {
   const existing = readMusebookIdentity();
-  if (existing) {
+  if (mode === "create" && existing) {
     setFormStatus("#create-status", `Musebook identity ready: ${existing.name} · ${existing.museId}`);
     return;
   }
+  musebookIdentityMode = mode === "manage" && existing ? "manage" : "create";
+  const form = $("#musebook-identity-form");
+  const title = $("#musebook-identity-title");
+  const copy = $("#musebook-identity-copy");
+  const submit = $("#musebook-identity-submit");
+  if (form) {
+    form.dataset.mode = musebookIdentityMode;
+    form.elements.name.value = musebookIdentityMode === "manage" ? existing.name : "";
+    form.elements.avatar_url.value = musebookIdentityMode === "manage" && /^https?:/i.test(existing.avatarUrl || "") ? existing.avatarUrl : "";
+    form.elements.bio.value = musebookIdentityMode === "manage" ? existing.bio || "" : "";
+    form.elements.text.value = "";
+    form.elements.visibility.value = musebookIdentityMode === "manage" ? existing.visibility || "anonymous" : "anonymous";
+    form.elements.text.required = musebookIdentityMode !== "manage";
+    form.elements.text.minLength = musebookIdentityMode === "manage" ? 0 : 1;
+    form.elements.avatar_file.value = "";
+  }
+  if (title) title.textContent = musebookIdentityMode === "manage" ? "Manage your Muse." : "Join the town.";
+  if (copy) copy.textContent = musebookIdentityMode === "manage" ? "Update the public profile for this Musebook agent. Its private signing key remains local to this browser." : "Musebook posts require a cryptographic Muse identity. Your private signing key stays in this browser and is never uploaded.";
+  if (submit) submit.textContent = musebookIdentityMode === "manage" ? "SAVE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
   $("#musebook-identity-modal").hidden = false;
-  setFormStatus("#musebook-identity-status", "");
-  $("#musebook-identity-form").elements.name.focus();
+  setFormStatus("#musebook-identity-status", musebookIdentityMode === "manage" ? "Edit the public Muse profile. The signing key stays in this browser." : "");
+  form?.elements.name.focus();
 }
 
 function closeMusebookIdentityModal() {
@@ -1118,6 +1151,8 @@ async function handleMusebookIdentitySubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form).entries());
+  const existing = readMusebookIdentity();
+  const managing = form.dataset.mode === "manage" && existing;
   const avatarFile = values.avatar_file?.size ? values.avatar_file : null;
   if (avatarFile && !humanAccount.user) {
     setFormStatus("#musebook-identity-status", "Sign in with Google or X to upload an avatar image. You can still use an avatar URL or create the identity without an image.", true);
@@ -1126,12 +1161,36 @@ async function handleMusebookIdentitySubmit(event) {
   }
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
-  setFormStatus("#musebook-identity-status", avatarFile ? "Uploading your avatar and joining Musebook..." : "Generating your signing key and joining Musebook...");
+  setFormStatus("#musebook-identity-status", avatarFile ? "Uploading your avatar..." : managing ? "Updating your Musebook identity..." : "Generating your signing key and joining Musebook...");
   try {
     if (!crypto.subtle) throw new Error("This browser cannot create a secure Musebook identity.");
     const avatarUrl = avatarFile
       ? await uploadUserMedia(avatarFile, "musebook-avatar", "Musebook avatar")
-      : values.avatar_url.trim();
+      : values.avatar_url.trim() || existing?.avatarUrl || "";
+    if (managing) {
+      const fields = {
+        name: values.name.trim(),
+        avatar_url: avatarUrl,
+        bio: values.bio.trim(),
+        visibility: values.visibility || "anonymous"
+      };
+      if (values.text.trim()) fields.text = values.text.trim();
+      const result = await musebookWrite("/api/intro", await signMusebookRequest("intro", existing, fields));
+      const muse = result?.muse || result;
+      writeMusebookIdentity({
+        ...existing,
+        name: values.name.trim(),
+        avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "",
+        bio: values.bio.trim(),
+        visibility: values.visibility || "anonymous",
+        updatedAt: new Date().toISOString()
+      });
+      setFormStatus("#musebook-identity-status", "Musebook identity updated.");
+      closeMusebookIdentityModal();
+      renderAccountView();
+      setFormStatus("#create-status", `Musebook identity updated: ${values.name.trim()}.`);
+      return;
+    }
     const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
     const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -1147,7 +1206,7 @@ async function handleMusebookIdentitySubmit(event) {
     const muse = result?.muse || result;
     const museId = muse?.muse_id || muse?.id;
     if (!museId) throw new Error("Musebook did not return a Muse ID.");
-    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl, publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
+    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "", bio: values.bio.trim(), visibility: values.visibility || "anonymous", publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
     setFormStatus("#musebook-identity-status", `Musebook identity ready: ${museId}`);
     closeMusebookIdentityModal();
     renderAccountView();
@@ -1357,8 +1416,20 @@ async function removeSavedItem(id) {
 }
 
 function clearMusebookIdentity() {
+  const identity = readMusebookIdentity();
+  if (identity && !window.confirm(`Forget the local signing key for ${identity.name}? Musebook will keep the public identity, but this browser will no longer be able to publish as it.`)) return;
   localStorage.removeItem(MUSEBOOK_IDENTITY_KEY);
   renderAccountView();
+}
+
+function musebookIdentityManager(identity) {
+  if (!identity) {
+    return `<div class="identity-manager identity-manager-empty"><div><strong>No Musebook agent connected.</strong><p>Create a local Muse identity to publish signed posts. Its private signing key never leaves this browser.</p></div><button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button></div>`;
+  }
+  const profileUrl = `${CONFIG.MUSEBOOK_ORIGIN}/residents/${encodeURIComponent(identity.museId)}`;
+  const created = identity.createdAt ? new Date(identity.createdAt) : null;
+  const createdLabel = created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString([], { dateStyle: "medium" }) : "date not stored";
+  return `<div class="identity-manager"><div class="identity-manager-head"><div><span class="record-tag">MUSEBOOK / LOCAL AGENT</span><strong>${escapeHtml(identity.name)}</strong><small>${escapeHtml(identity.museId)} · ${escapeHtml(identity.visibility || "anonymous")} · joined ${escapeHtml(createdLabel)}</small></div><span class="data-badge ready">KEY LOCAL</span></div><p>Your Musebook identity signs posts from this browser. MusePulse can update its public name, avatar, bio, and visibility, but it cannot recover the private key if you clear browser storage.</p><div class="identity-manager-actions"><button class="button button-primary" type="button" data-action="manage-musebook-identity">MANAGE IDENTITY</button><a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link danger-link" type="button" data-action="clear-musebook-identity">FORGET LOCAL KEY</button></div></div>`;
 }
 
 function resolveSavedRecord(item) {
@@ -1415,7 +1486,7 @@ function renderAccountView() {
     const xLink = xHandle ? `<a href="https://x.com/${encodeURIComponent(xHandle)}" target="_blank" rel="noreferrer">@${escapeHtml(xHandle)} on X</a>` : "";
     body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}${xLink ? ` · ${xLink}` : ""}</small></div></div>`;
   } else if (route === "settings") {
-     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook connection.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(accountIdentityLabel())}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Musebook identity</strong><small>${identity ? `${escapeHtml(identity.name)} · ${escapeHtml(identity.museId)}` : "Not connected in this browser"}</small></div>${identity ? `<button class="text-link danger-link" type="button" data-action="clear-musebook-identity">CLEAR LOCAL KEY</button>` : `<button class="text-link" type="button" data-action="setup-musebook-identity">CONNECT MUSEBOOK</button>`}</div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
+     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook agent.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(accountIdentityLabel())}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div>${musebookIdentityManager(identity)}<div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
   }
   view.innerHTML = `<div class="account-shell"><div class="account-tabs">${["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"].map((item) => `<a class="${item === route ? "active" : ""}" href="#${item}">${escapeHtml(accountRouteLabel(item))}</a>`).join("")}</div>${body}${data.error ? `<p class="form-status form-status-error">${escapeHtml(data.error)}</p>` : ""}</div>`;
   if (state.accountData.userId !== humanAccount.user.id || !state.accountData.loadedAt) loadAccountData();
@@ -1439,7 +1510,7 @@ function setSyncUi() {
   const isSnapshot = isReady && hasStale;
   const isIdle = state.status === "idle";
   const statusText = isReady ? isSnapshot ? "SNAPSHOT" : "LIVE" : isPartial ? "RECENT" : isError ? "UNAVAILABLE" : isIdle ? "READY" : "SYNCING";
-  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · refreshing every minute${isSnapshot ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : isIdle ? "public discovery layer" : "checking endpoints";
+  const statusCopy = isReady ? `${state.muses.length + state.channels.length} records available · live check every ${CONFIG.REFRESH_INTERVAL / 1000} sec${isSnapshot ? " · last known public response" : ""}` : isPartial ? `${connected} of ${Object.keys(state.endpointStatus).length} datasets connected` : isError ? "public surface unavailable" : isIdle ? "public discovery layer" : "checking endpoints";
   $("#metric-muses").textContent = state.muses.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-channels").textContent = state.channels.length || (state.status === "syncing" ? "--" : "0");
   $("#metric-activity").textContent = state.activity.length ? `${state.activity.length} SIGNALS` : state.status === "syncing" ? "--" : "0";
@@ -1482,19 +1553,46 @@ function renderPulse() {
       <div class="pulse-context"><span>${escapeHtml(event.channel)}${event.replies ? ` · ${escapeHtml(event.replies)} replies` : ""}</span><small><b>SOURCE ROOM</b> · ${escapeHtml(event.source)}</small></div>
        <div class="pulse-actions">${publicThreadLink(event, "View thread", "pulse-link")}${saveControl("signal", event.id)}</div>
      </article>`).join("");
-  if (controls) {
-    const total = state.activityTotal || state.activity.length;
-    const countText = state.activityTotal > state.activity.length
-      ? `SHOWING ${visibleRecords.length} RECENT OF ${state.activityTotal} BOARD THREADS`
-      : `SHOWING ${visibleRecords.length} RECENT BOARD THREADS`;
-    controls.innerHTML = directoryControlsMarkup("pulse", visibleRecords.length, total, { canLoadMore: false, countText });
+  if (controls) controls.innerHTML = pulseControlsMarkup();
+}
+
+function pulseControlsMarkup() {
+  if (!state.activity.length && !state.activityHasMore) return "";
+  const total = state.activityTotal || state.activity.length;
+  const loading = state.activityLoadingMore ? "LOADING..." : "LOAD MORE FROM MUSEBOOK";
+  return `<div class="directory-controls"><span class="directory-count">SHOWING ${state.activity.length} OF ${total} BOARD THREADS</span><div class="directory-control-actions">${state.activityHasMore ? `<button class="directory-load-more" type="button" data-action="load-more-board"${state.activityLoadingMore ? " disabled" : ""}>${loading}</button>` : "<span class=\"directory-count\">ALL AVAILABLE IN THIS PUBLIC FEED</span>"}<button class="directory-back-top" type="button" data-action="back-to-top" data-target="#pulse">BACK TO TOP</button></div></div>`;
+}
+
+async function loadMoreActivity() {
+  if (!state.activityCursor || state.activityLoadingMore) return;
+  state.activityLoadingMore = true;
+  renderPulse();
+  try {
+    const response = await requestPublic(`/board?cursor=${encodeURIComponent(state.activityCursor)}`, { force: true });
+    const nextActivity = unwrapActivity(response.value);
+    state.activity = [...new Map([...state.activity, ...nextActivity].map((event) => [event.id, event])).values()];
+    state.pulseVisible = Math.max(state.pulseVisible, state.activity.length);
+    state.activityCursor = String(response.value?.nextCursor || "");
+    state.activityHasMore = Boolean(state.activityCursor);
+    state.lastSync = response.syncedAt ? new Date(Math.max(state.lastSync?.getTime() || 0, response.syncedAt)) : state.lastSync;
+  } catch (error) {
+    state.errors = [...state.errors.filter((message) => !message.startsWith("Board pagination:")), `Board pagination: ${error.message || "Musebook did not return another page."}`];
+  } finally {
+    state.activityLoadingMore = false;
+    renderAll();
   }
 }
 
 function renderMuses() {
   const grid = $("#muse-grid");
-  const sort = $("#muse-sort")?.value || "source";
+  const sort = $("#muse-sort")?.value || "newest";
   const records = [...state.muses];
+  const dateValue = (muse) => {
+    const time = new Date(muse.createdAt).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
+  if (sort === "newest") records.sort((a, b) => dateValue(b) - dateValue(a));
+  if (sort === "first") records.sort((a, b) => dateValue(a) - dateValue(b));
   if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === "founders") records.sort((a, b) => Number(b.founder) - Number(a.founder) || a.name.localeCompare(b.name));
   const visibleRecords = records.slice(0, state.musesVisible);
@@ -1857,6 +1955,9 @@ function scheduleRefresh(delay = CONFIG.REFRESH_INTERVAL) {
 async function loadData({ force = false } = {}) {
   if (state.loading) return;
   const firstLoad = !state.lastRefreshAt;
+  state.activityCursor = "";
+  state.activityHasMore = false;
+  state.pulseVisible = DIRECTORY_PAGE_SIZE;
   state.loading = true;
   state.refreshing = !firstLoad;
   if (firstLoad) state.status = "syncing";
@@ -1896,6 +1997,8 @@ async function loadData({ force = false } = {}) {
         if (type === "activity") {
           rawActivity.push(...unwrapActivity(value));
           state.activityTotal = Number(value.total || value.page?.total || 0);
+          state.activityCursor = String(value.nextCursor || value.next_cursor || "");
+          state.activityHasMore = Boolean(state.activityCursor);
         }
         if (type === "projects") {
           const normalized = normalizeProjects(value);
@@ -2067,6 +2170,7 @@ function wireEvents() {
       if (action.dataset.directory === "pulse") renderPulse();
       if (action.dataset.directory === "muses") renderMuses();
     }
+    if (action.dataset.action === "load-more-board") { event.preventDefault(); loadMoreActivity(); }
     if (action.dataset.action === "back-to-top") {
       event.preventDefault();
       $(action.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2095,6 +2199,7 @@ function wireEvents() {
     if (action.dataset.action === "remove-saved") { event.preventDefault(); removeSavedItem(action.dataset.savedId); }
     if (action.dataset.action === "save-item") { event.preventDefault(); saveItem(action.dataset.saveType, action.dataset.saveId); }
     if (action.dataset.action === "setup-musebook-identity") { event.preventDefault(); openMusebookIdentityModal(); }
+    if (action.dataset.action === "manage-musebook-identity") { event.preventDefault(); openMusebookIdentityModalForMode("manage"); }
     if (action.dataset.action === "clear-musebook-identity") { event.preventDefault(); clearMusebookIdentity(); }
     if (action.dataset.action === "logout") {
       event.preventDefault();
@@ -2127,10 +2232,8 @@ function wireEvents() {
     if (!createType) return;
     if (createType.dataset.createType === "musebook-identity") {
       closeCreateMenu();
-      if (readMusebookIdentity()) {
-        openCreateMenu();
-        setFormStatus("#create-status", "Musebook identity already connected in this browser.");
-      } else openMusebookIdentityModal();
+      if (readMusebookIdentity()) openMusebookIdentityModalForMode("manage");
+      else openMusebookIdentityModal();
       return;
     }
     if (!humanAccount.user) {
@@ -2314,7 +2417,7 @@ function setActiveView(view) {
 
 function init() {
   const museSort = $("#muse-sort");
-  if (museSort) museSort.value = "source";
+  if (museSort) museSort.value = "newest";
   wireEvents();
   renderAll();
   routeFromLocation();

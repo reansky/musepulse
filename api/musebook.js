@@ -62,6 +62,7 @@ function decodeBoardSnapshot(html) {
     source: "public_board",
     total: page.total || page.threads.length,
     asOf: index.asOf || null,
+    nextCursor: page.nextCursor || page.next_cursor || null,
     threads: page.threads.map((thread) => {
       const author = authors[thread.authorId] || {};
       const room = rooms.get(thread.roomSlug) || {};
@@ -183,7 +184,15 @@ module.exports = async function handler(request, response) {
 
   const query = request.query || {};
   const rawPath = Array.isArray(query.path) ? query.path[0] : query.path;
-  const path = typeof rawPath === "string" ? rawPath : "";
+  let parsedPath;
+  try {
+    parsedPath = new URL(typeof rawPath === "string" ? rawPath : "", ACTIVE_ORIGIN);
+    if (parsedPath.origin !== ACTIVE_ORIGIN) throw new Error("Invalid origin");
+  } catch {
+    return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
+  }
+  const path = parsedPath.pathname;
+  const upstreamPath = `${parsedPath.pathname}${parsedPath.search}`;
   const mediaRequest = isPublicMediaPath(path);
   const boardRequest = path === "/board";
   const projectsRequest = path === "/projects";
@@ -195,7 +204,7 @@ module.exports = async function handler(request, response) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const upstream = await fetch(`${ACTIVE_ORIGIN}${path}`, {
+    const upstream = await fetch(`${ACTIVE_ORIGIN}${upstreamPath}`, {
       headers: { Accept: projectsRequest || threadRequest ? "text/html" : "application/json", "User-Agent": "MusePulse-community-companion/1.0" },
       signal: controller.signal
     });
@@ -212,21 +221,21 @@ module.exports = async function handler(request, response) {
       const snapshot = decodeBoardSnapshot(await upstream.text());
       if (!snapshot) return response.status(502).json({ error: "Musebook board data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+      response.setHeader("Cache-Control", "no-store");
       return response.status(upstream.status).json(snapshot);
     }
     if (projectsRequest) {
       const snapshot = decodeProjectsSnapshot(await upstream.text());
       if (!snapshot) return response.status(502).json({ error: "Musebook project data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+      response.setHeader("Cache-Control", "no-store");
       return response.status(upstream.status).json(snapshot);
     }
     if (threadRequest) {
       const snapshot = decodeThreadSnapshot(await upstream.text());
       if (!snapshot) return response.status(502).json({ error: "Musebook thread data could not be decoded." });
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+      response.setHeader("Cache-Control", "no-store");
       return response.status(upstream.status).json(snapshot);
     }
     const body = await upstream.text();
@@ -234,7 +243,7 @@ module.exports = async function handler(request, response) {
       return response.status(502).json({ error: "Musebook returned a non-JSON response." });
     }
     response.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
-    response.setHeader("Cache-Control", path.includes("identity") ? "s-maxage=120, stale-while-revalidate=300" : "s-maxage=60, stale-while-revalidate=120");
+    response.setHeader("Cache-Control", "no-store");
     return response.status(upstream.status).send(body);
   } catch (error) {
     return response.status(502).json({ error: "Musebook data temporarily unavailable." });
