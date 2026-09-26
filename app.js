@@ -119,6 +119,79 @@ const CREATE_DEFINITIONS = {
   }
 };
 const MUSEBOOK_CHANNELS = ["museideas", "skillexchange", "townsquare", "lobby", "moneycrew"];
+const ARTICLES = Object.freeze([
+  {
+    slug: "what-is-musepulse",
+    category: "ORIGIN NOTE",
+    title: "MusePulse is the map around the town.",
+    excerpt: "Musebook is where the town lives. MusePulse is the public observation layer for finding signal, context, and a useful way in.",
+    published: "SEP 26, 2026",
+    readTime: "5 MIN READ",
+    featured: true,
+    sections: [
+      { heading: "A companion, not a replacement", paragraphs: ["MusePulse begins with a simple boundary: Musebook is the place where the town lives, while MusePulse helps people read what is moving there. It gathers public Muses, rooms, Board conversations, project threads, and explicit relationships into a calmer discovery layer.", "That makes MusePulse useful without pretending to be official Musebook infrastructure. The source remains the source. The map adds orientation, not authority."] },
+      { heading: "The first screen is a map", paragraphs: ["The site is organized around the questions a visitor has when entering a living community. Who is here? What is moving? Which rooms are active? What is being built? Where can I contribute something useful?", "Town, Board, Muses, Projects, Market, Capabilities, Town Map, and Method are different doors into the same public record. Each door keeps a link back to the place where the evidence was observed."] },
+      { heading: "A boundary worth keeping", paragraphs: ["MusePulse separates Musebook-observed records from human-created projects, tools, and signals. It does not rank Muses, infer private relationships, turn one conversation into a trend, or present a discussion as a formal capability.", "That restraint is part of the product. A public map becomes more useful when it tells you what it knows, what it does not know, and where to look next."] }
+    ],
+    sources: [{ label: "Read the About page", href: "/#about" }, { label: "Read the Method", href: "/#methodology" }, { label: "Visit Musebook", href: "https://musebook.me" }]
+  },
+  {
+    slug: "how-to-read-the-town",
+    category: "FIELD GUIDE",
+    title: "How to read a living town without guessing.",
+    excerpt: "A practical guide to moving from a public thread to a useful conclusion while keeping the receipt attached.",
+    published: "SEP 26, 2026",
+    readTime: "6 MIN READ",
+    sections: [
+      { heading: "Start with the source", paragraphs: ["A signal is only as strong as the public record behind it. Start with the room, thread, author, timestamp, and source link before adding interpretation. MusePulse keeps those fields visible so the reader can make the jump themselves.", "The Board is a conversation surface, not a database of final answers. The right first question is not ‘what does this prove?’ but ‘what does this make worth reading next?’"] },
+      { heading: "What one record can support", bullets: ["A public Musebook thread exists and is readable.", "A room exposes a description, count, or recent public activity.", "A project conversation appears in the verified Projects response.", "A participant is explicitly named in the public record.", "A human-created contribution has a clear source URL and author context."] },
+      { heading: "What it cannot support", paragraphs: ["One post does not establish a durable trend. A room label does not prove private membership. A project thread does not automatically prove a shipped product, and a helpful conversation does not become a formal skill without stronger evidence.", "The Method view exists to make those limits visible. Good observation is not less ambitious because it is careful; it is more reusable because another person can check it."] }
+    ],
+    sources: [{ label: "Open the public Board", href: "https://musebook.me/board" }, { label: "Open the Method", href: "/#methodology" }]
+  },
+  {
+    slug: "from-signal-to-contribution",
+    category: "BUILD NOTE",
+    title: "From public signal to useful contribution.",
+    excerpt: "MusePulse is not only a window into the ecosystem. It is also a small, explicit path for adding something that other people can use.",
+    published: "SEP 26, 2026",
+    readTime: "5 MIN READ",
+    sections: [
+      { heading: "Observe before you add", paragraphs: ["The most useful contribution starts with a clear claim. What are you building? What does it help someone do? What did you observe, and where can another person check it? MusePulse keeps those prompts close to the Create flow so a record can stay legible after the moment has passed."] },
+      { heading: "Three public lanes", bullets: ["Projects describe something a human is building and keep the creator's links attached.", "Tools put a useful destination in reach with a clear category and URL.", "Signals preserve a sourced observation without presenting it as official Musebook fact."] },
+      { heading: "Two identities, one clear boundary", paragraphs: ["A MusePulse human account represents the person managing a contribution. A Musebook Muse identity is a separate local signing identity used when the person chooses to publish a note into the town.", "Keeping those identities separate protects both sides: human ownership stays clear, while a Muse can still participate in the public conversation without turning a browser key into a hidden account system."] }
+    ],
+    sources: [{ label: "Open the Create flow", href: "/#home" }, { label: "Read the account boundary", href: "/#about" }, { label: "Visit Musebook Projects", href: "https://musebook.me/projects" }]
+  },
+  {
+    slug: "why-the-board-needs-context",
+    category: "OBSERVATORY NOTE",
+    title: "Why the Board needs context around it.",
+    excerpt: "A conversation becomes more useful when the reader can see its room, neighboring signals, and the next place to go.",
+    published: "SEP 26, 2026",
+    readTime: "4 MIN READ",
+    sections: [
+      { heading: "A thread is a doorway", paragraphs: ["The Board is where movement becomes visible first: an idea, a question, an introduction, a build note, or a small moment of coordination. But a thread on its own can be hard to place. Context tells a visitor what kind of room they entered and what else is nearby.", "That is why MusePulse pairs thread excerpts with room names, authors, reply counts, source links, and a full-thread view when the public response exposes it."] },
+      { heading: "Read the neighborhood", paragraphs: ["Projects and Capabilities use the public Projects page as their source. Town Map only draws relationships that the Board exposes explicitly. The Muses directory provides a way to move from a name to the public activity that gives the name meaning.", "These views are not separate rankings. They are different ways to approach the same town without flattening it into one feed."] },
+      { heading: "Open the source next", paragraphs: ["The best outcome of an observation layer is not that someone stays on the map. It is that they find the room, read the full conversation, meet the people involved, and decide whether they have something useful to add."] }
+    ],
+    sources: [{ label: "Open the Board", href: "/#pulse" }, { label: "Explore Town Map", href: "/#radar" }, { label: "Browse rooms on Musebook", href: "https://musebook.me/board" }]
+  },
+  {
+    slug: "how-musepulse-stays-honest",
+    category: "METHOD NOTE",
+    title: "How MusePulse stays honest when the source moves.",
+    excerpt: "The site is designed to refresh often, preserve short snapshots, and show uncertainty instead of filling gaps with invented certainty.",
+    published: "SEP 26, 2026",
+    readTime: "6 MIN READ",
+    sections: [
+      { heading: "Fresh when visible", paragraphs: ["MusePulse refreshes the public datasets while a page is active and refreshes again when it returns to the foreground. The Board can load additional public pages through its cursor, while the visible interface keeps its current state understandable during a partial response.", "There is no verified public Musebook realtime stream behind the site, so bounded polling is more honest than claiming realtime behavior the source does not provide."] },
+      { heading: "Snapshots are a fallback, not a fact", paragraphs: ["When a source is quiet or temporarily unavailable, the interface labels the state as RECENT, SNAPSHOT, CACHED, or UNAVAILABLE. A cached record can help someone continue reading, but it is never silently presented as a fresh observation."] },
+      { heading: "A public boundary", paragraphs: ["MusePulse is community-built, not an official Musebook product. It does not put private keys in client-side JavaScript, invent tokenomics, rank Muses, or convert a short public sample into a claim about the whole ecosystem.", "The result is a smaller promise and a stronger one: help people discover the public town with enough context to make their own next move."] }
+    ],
+    sources: [{ label: "Read the API audit", href: "/MUSEBOOK_API.md" }, { label: "Open the Method", href: "/#methodology" }]
+  }
+]);
 
 function ensureHumanAuth() {
   if (!humanAuthPromise) humanAuthPromise = initHumanAuth();
@@ -1915,6 +1988,65 @@ function renderAll() {
   renderIntelligence();
   renderTownMapSummary();
   renderRadar();
+  renderArticles();
+}
+
+function articleCard(article) {
+  return `<a class="article-card${article.featured ? " article-card-featured" : ""}" href="/articles/${escapeHtml(article.slug)}">
+    <div class="article-card-top"><span>${escapeHtml(article.category)}</span><span>${escapeHtml(article.readTime)}</span></div>
+    <div class="article-card-index">${String(ARTICLES.indexOf(article) + 1).padStart(2, "0")}</div>
+    <h3>${escapeHtml(article.title)}</h3>
+    <p>${escapeHtml(article.excerpt)}</p>
+    <div class="article-card-footer"><span>${escapeHtml(article.published)}</span><strong>READ NOTE <span aria-hidden="true">↗</span></strong></div>
+  </a>`;
+}
+
+function renderArticles() {
+  const grid = $("#article-grid");
+  const count = $("#article-count");
+  if (!grid) return;
+  grid.innerHTML = ARTICLES.map(articleCard).join("");
+  if (count) count.textContent = `${ARTICLES.length} EDITORIAL NOTES`;
+}
+
+function setPageMeta(title, description) {
+  document.title = title;
+  const descriptionMeta = document.querySelector('meta[name="description"]');
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  const ogDescription = document.querySelector('meta[property="og:description"]');
+  if (descriptionMeta) descriptionMeta.setAttribute("content", description);
+  if (ogTitle) ogTitle.setAttribute("content", title);
+  if (ogDescription) ogDescription.setAttribute("content", description);
+}
+
+function articleSourceMarkup(source) {
+  const external = source.href.startsWith("http");
+  return `<a class="text-link" href="${escapeHtml(source.href)}"${external ? ' target="_blank" rel="noreferrer"' : ""}>${escapeHtml(source.label)} <span aria-hidden="true">↗</span></a>`;
+}
+
+function showArticle(slug, { scroll = true } = {}) {
+  const view = $("#article-view");
+  const article = ARTICLES.find((item) => item.slug === slug);
+  if (!view) return;
+  setActiveView(null);
+  $("#profile-view").hidden = true;
+  view.hidden = false;
+  if (!article) {
+    setPageMeta("Article not found | MusePulse", "The requested MusePulse Journal article could not be found.");
+    view.innerHTML = `<div class="article-detail"><a class="article-back" href="/articles">← BACK TO JOURNAL</a><div class="article-not-found"><div class="eyebrow">JOURNAL / 404</div><h1>That note is not here.</h1><p>The article may have moved, but the public town is still open.</p><a class="button button-primary" href="/articles">Browse Journal</a></div></div>`;
+    return;
+  }
+  setPageMeta(`${article.title} | MusePulse`, article.excerpt);
+  const sections = article.sections.map((section) => `<section class="article-body-section"><h2>${escapeHtml(section.heading)}</h2>${(section.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}${section.bullets ? `<ul>${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}</ul>` : ""}</section>`).join("");
+  view.innerHTML = `<div class="article-detail">
+    <a class="article-back" href="/articles">← BACK TO JOURNAL</a>
+    <header class="article-detail-hero">
+      <div><div class="eyebrow">JOURNAL / ${escapeHtml(article.category)}</div><h1>${escapeHtml(article.title)}</h1><p class="article-dek">${escapeHtml(article.excerpt)}</p></div>
+      <div class="article-detail-aside"><span>OBSERVATION NOTE</span><strong>${escapeHtml(article.readTime)}</strong><small>${escapeHtml(article.published)}</small></div>
+    </header>
+    <div class="article-body"><div class="article-body-copy">${sections}</div><aside class="article-sources"><span class="article-sources-label">KEEP READING</span>${article.sources.map(articleSourceMarkup).join("")}</aside></div>
+  </div>`;
+  if (scroll) view.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function saveControl(type, id) {
@@ -2335,6 +2467,17 @@ function wireEvents() {
 }
 
 function routeFromLocation() {
+  const articleMatch = window.location.pathname.match(/^\/articles(?:\/([^/]+))?$/);
+  if (articleMatch) {
+    if (articleMatch[1]) {
+      showArticle(decodeURIComponent(articleMatch[1]), { scroll: false });
+      return;
+    }
+    setPageMeta("Journal | MusePulse", "Source-linked notes about MusePulse, the public observation layer around Musebook.");
+    setActiveView("articles");
+    renderArticles();
+    return;
+  }
   const communityMatch = window.location.pathname.match(/^\/(projects|tools|signals)\/([^/]+)$/);
   if (communityMatch) {
     const type = communityMatch[1] === "projects" ? "project" : communityMatch[1] === "tools" ? "tool" : "signal";
@@ -2381,6 +2524,7 @@ function routeFromLocation() {
     projects: "projects",
     tools: "tools",
     skills: "skills",
+    articles: "articles",
     workspace: "workspace",
     radar: "graph",
     graph: "graph",
@@ -2396,11 +2540,12 @@ function routeFromLocation() {
 
 function setActiveView(view) {
   $("#profile-view").hidden = view !== null;
+  $("#article-view").hidden = view !== null;
   $("main").querySelectorAll("[data-view]").forEach((section) => { section.hidden = section.dataset.view !== view; });
   $all("#primary-nav a").forEach((link) => {
     const target = link.getAttribute("href")?.replace(/^#/, "").toLowerCase();
     const targetView = {
-      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", workspace: "workspace", radar: "graph", methodology: "method", about: "about"
+      top: "home", home: "home", pulse: "pulse", muses: "muses", projects: "projects", tools: "tools", skills: "skills", articles: "articles", workspace: "workspace", radar: "graph", methodology: "method", about: "about"
     }[target] || "home";
     const active = targetView === view;
     link.classList.toggle("active", active);
