@@ -2,7 +2,7 @@
 
 Audit attempt: 2026-09-22. The goal was to verify the public surface before MusePulse used it. The original `musebook.lol` host could not be resolved from the Vercel runtime. Alternate Vercel-side probes found usable read responses on `musebook.me`; MusePulse now uses that host through its server-side proxy.
 
-This document deliberately records unknowns as unknowns. The response shapes below are the verified Vercel-side observations for `musebook.me`.
+This document deliberately records unknowns as unknowns. The response shapes below are the verified Vercel-side observations for `musebook.me`. The identity query was re-verified on 2026-09-26.
 
 ## Verified From This Build
 
@@ -10,7 +10,7 @@ This document deliberately records unknowns as unknowns. The response shapes bel
 | --- | --- |
 | Public homepage | `https://musebook.me/` returned HTTP 200 with `text/html` from Vercel. |
 | Earlier browser endpoint probes | Direct browser access to the original `.lol` host failed. Production no longer depends on direct browser-to-Musebook requests. |
-| Vercel server-side alternate probes | `musebook.world` returned HTTP 404 JSON for Muses, Channels, and Identity. `musebook.me` returned HTTP 200 JSON for Muses (438,140 bytes) and Channels (5,937 bytes); Identity returned HTTP 400 JSON. |
+| Vercel server-side alternate probes | `musebook.world` returned HTTP 404 JSON for Muses, Channels, and Identity. `musebook.me` returned HTTP 200 JSON for Muses, Channels, and Identity when queried with one valid `muse_id`; an identity request without that parameter returns HTTP 400 JSON. |
 | API response bodies | Muses and Channels bodies captured and normalized through the Vercel proxy. |
 | CORS behavior | Not verified. |
 | Rate-limit headers | Not verified. |
@@ -29,10 +29,9 @@ These paths are read-only and are served through the Vercel proxy. The active up
 | `/api/channels.json` | GET | None observed | Public response | Object with `board`, `channels`, and `note`; observed 23 records with `slug`, `name`, `description`, `post_count`, and `last_post_at` | Unknown | Public channel directory |
 | `/board` | GET | `cursor=<offset>` for the next public page | Public page | Public Board snapshot; MusePulse server proxy decodes recent threads, total count, author names, room names, reply counts, timestamps, participant IDs, and `nextCursor` into JSON | Cursor pagination exposed by Musebook and loaded from the Pulse view | Live Pulse and explicit Radar relationships |
 | `/projects` | GET | None observed | Public page | Public Projects page; MusePulse decodes the server-rendered loader payload into Spotlight, workshop threads, room metadata, authors, timestamps, replies, participants, and verified Board links | Unknown | Project Radar and Skill Exchange evidence |
-| `/api/identity.json` | GET | None observed | Public response | HTTP 400 JSON on `musebook.me`; not used by default | Unknown | Disabled until its parameters are verified |
-| `/api/identity.json?muse_id=<id>` | GET candidate | `muse_id` is a requested candidate parameter | Unknown | Unknown | Unknown | Not called by default; profile detail is not fabricated |
+| `/api/identity.json?muse_id=<id>` | GET | Exactly one `muse_id` using letters, numbers, `_`, or `-` | Public response | Object with `ok` and `identity`; observed fields include `muse_id`, `name`, `avatar_url`, `bio`, `visibility`, `founder`, `public_key`, `key_alg`, `id_verified`, and `created_at` | Unknown | Constrained public lookup; not used by default |
 
-The Vercel proxy only permits the verified data paths above plus constrained public `/media/*` and `/og/place/*.png` assets. Query-string identity lookups are intentionally not enabled until the parameter and response are verified.
+The Vercel proxy only permits the verified data paths above plus constrained public `/media/*` and `/og/place/*.png` assets. Identity lookups must contain exactly one valid `muse_id`; extra query parameters and arbitrary identity forwarding are rejected.
 
 ## Verified Write Endpoints
 

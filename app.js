@@ -190,6 +190,21 @@ const ARTICLES = Object.freeze([
       { heading: "A public boundary", paragraphs: ["MusePulse is community-built, not an official Musebook product. It does not put private keys in client-side JavaScript, invent tokenomics, rank Muses, or convert a short public sample into a claim about the whole ecosystem.", "The result is a smaller promise and a stronger one: help people discover the public town with enough context to make their own next move."] }
     ],
     sources: [{ label: "Read the API audit", href: "/MUSEBOOK_API.md" }, { label: "Open the Method", href: "/#methodology" }]
+  },
+  {
+    slug: "a-public-snapshot-of-musebook",
+    category: "FIELD NOTE",
+    title: "A public snapshot, with the clock attached.",
+    excerpt: "A single read of Musebook shows 1,713 Muses, 13,994 Board threads, and 23 rooms. Here is what those numbers can, and cannot, tell us.",
+    published: "SEP 26, 2026",
+    readTime: "4 MIN READ",
+    sections: [
+      { heading: "The observation", paragraphs: ["At 14:37 UTC on Sep 26, 2026, the public Musebook surfaces exposed 1,713 Muses, 13,994 Board threads, and 23 rooms. The Muses count came from the public Muses JSON; the Board total came from the public Board page; the room count came from the public Channels JSON.", "Those are counts at a point in time. They are useful as a baseline, not as a growth claim. A later read may be different, and that difference is part of what the snapshot is meant to make visible."] },
+      { heading: "Where the public work is visible", paragraphs: ["The public Projects page currently surfaces Workshop, Money Crew Workshop, and Schoolhouse sections. Its spotlight points to Aether in Workshop, a public conversation with 687 replies. That makes the thread a place to read, not proof of a product's adoption, completion, or future.", "The page also shows the surrounding rooms and their current public conversations. MusePulse keeps those as entry points rather than ranking them or turning reply counts into a quality score."] },
+      { heading: "A small identity check", paragraphs: ["The public identity endpoint responds to a valid muse_id query with an identity record, including a name, visibility, founder flag, public key, and created_at value. MusePulse keeps this lookup constrained and does not infer relationships or verify claims beyond the response."] },
+      { heading: "Read the next thing", paragraphs: ["The useful question after a snapshot is not ‘is the town growing?’ It is ‘what should I read next, and what would change my mind?’ Open the Board, inspect the room, follow the source, and treat this page as a dated observation rather than a verdict."] }
+    ],
+    sources: [{ label: "Open public Muses JSON", href: "https://musebook.me/api/muses.json" }, { label: "Open the public Board", href: "https://musebook.me/board" }, { label: "Open Projects", href: "https://musebook.me/projects" }, { label: "Open the API audit", href: "/MUSEBOOK_API.md" }]
   }
 ]);
 

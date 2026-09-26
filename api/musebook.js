@@ -196,9 +196,17 @@ module.exports = async function handler(request, response) {
   const mediaRequest = isPublicMediaPath(path);
   const boardRequest = path === "/board";
   const projectsRequest = path === "/projects";
+  const identityRequest = path === "/api/identity.json";
   const threadRequest = isPublicThreadPath(path);
   if (!ALLOWED_PATHS.has(path) && !mediaRequest && !threadRequest) {
     return response.status(400).json({ error: "Endpoint is not enabled until it has been verified." });
+  }
+  if (identityRequest) {
+    const identityIds = parsedPath.searchParams.getAll("muse_id");
+    const hasOnlyMuseId = [...parsedPath.searchParams.keys()].every((key) => key === "muse_id");
+    if (identityIds.length !== 1 || !hasOnlyMuseId || !/^[A-Za-z0-9_-]{1,128}$/.test(identityIds[0])) {
+      return response.status(400).json({ error: "Identity lookup requires one valid muse_id." });
+    }
   }
 
   const controller = new AbortController();
