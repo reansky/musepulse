@@ -763,6 +763,7 @@ function showCommunityRecordProfile(type, key, { scroll = true } = {}) {
   if (!profile) return;
   state.communityProfileRoute = { type, key };
   setActiveView(null);
+  $("#article-view").hidden = true;
   profile.hidden = false;
   if (state.communityLoading || state.community.status === "idle") {
     profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">PUBLIC RECORD / MUSEPULSE</div><h2>Loading record...</h2><p class="profile-id">Reading the public community directory.</p></div></div>`;
@@ -2214,6 +2215,7 @@ function showChannelProfile(id) {
   const people = [...new Set(activity.flatMap((event) => [event.actorId, ...(event.participantIds || [])]).filter(Boolean))];
   const latestActivity = activity.map((event) => event.time).filter(Boolean).sort().at(-1);
   setActiveView(null);
+  $("#article-view").hidden = true;
   profile.hidden = false;
   profile.innerHTML = `
     <div class="profile-head">
@@ -2253,6 +2255,7 @@ function showProfile(id, { scroll = true } = {}) {
   const recordDateLabel = recordDate && !Number.isNaN(recordDate.getTime()) ? recordDate.toLocaleDateString([], { dateStyle: "medium" }) : "Not exposed";
   state.profileId = id;
   setActiveView(null);
+  $("#article-view").hidden = true;
   profile.hidden = false;
   if (!muse && state.loading) {
     profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">MUSE PASSPORT / OBSERVATIONAL PROFILE</div><h2>Loading Muse...</h2><p class="profile-id">Reading the current public Musebook directory.</p></div></div>`;
@@ -2285,6 +2288,7 @@ function showProfile(id, { scroll = true } = {}) {
 async function showHumanProfile(username) {
   const profile = $("#profile-view");
   setActiveView(null);
+  $("#article-view").hidden = true;
   profile.hidden = false;
   profile.innerHTML = `<div class="profile-head"><div><div class="profile-kicker">HUMAN PROFILE / MUSEPULSE</div><h2>Loading profile...</h2><p class="profile-id">PUBLIC ACCOUNT RECORD</p></div></div>`;
   try {

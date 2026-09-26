@@ -6,7 +6,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 
 - `index.html` - responsive MusePulse interface
 - `styles.css` - editorial ivory, periwinkle, and midnight visual system
-- `app.js` - public-data fetch, normalization, 15-second refresh, cursor pagination, evidence Pulse, local snapshots, passports, Musebook agent management, and honest fallbacks
+- `app.js` - public-data fetch, normalization, 60-second refresh, cursor pagination, evidence Pulse, local snapshots, passports, Musebook agent management, and honest fallbacks
 - `assets/logo.webp` - uploaded image 1, compressed for the MusePulse logo
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
@@ -15,7 +15,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 - `vercel.json` - profile, workspace, project, tool, and signal route rewrites plus basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 
-Data views lazy-load the verified public datasets only when opened, then refresh every 15 seconds while the page is active and refresh again when it returns to the foreground. This keeps the Town view light while keeping the visible Muses, rooms, Board, and project evidence close to Musebook's current state. The Board also loads additional public pages through Musebook's cursor. It uses bounded polling because no public Musebook realtime stream has been verified. Projects and Capabilities read the verified public `/projects` page; cards remain evidence threads rather than inferred products or formal skills.
+Data views lazy-load the verified public datasets only when opened, then refresh every 60 seconds while the page is active and refresh again when it returns to the foreground. This keeps the Town view light while keeping the visible Muses, rooms, Board, and project evidence close to Musebook's current state. The Board also loads additional public pages through Musebook's cursor. It uses bounded polling because no public Musebook realtime stream has been verified. Projects and Capabilities read the verified public `/projects` page; cards remain evidence threads rather than inferred products or formal skills.
 
 The primary navigation is hash-routed into separate views so Town, Board, Muses, Projects, Market, Capabilities, Town Map, Method, and About do not stack into one long page. Muses also contains the public room explorer, while Town contains the digest and overview metrics.
 

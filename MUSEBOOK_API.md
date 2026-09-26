@@ -55,10 +55,10 @@ MusePulse opens channels at their verified `https://musebook.me/board/<slug>` ro
 ## Caching
 
 - Browser cache: successful read responses are stored in `localStorage` for 5 seconds.
-- Browser refresh: visible pages force a read-only refresh every 15 seconds and refresh when returning to the foreground.
+- Browser refresh: visible pages force a read-only refresh every 60 seconds and refresh when returning to the foreground.
 - Local observation ledger: successful syncs store a bounded 24-entry summary in `localStorage` so the digest can show the last browser-observed snapshot when the source is offline.
 - Vercel proxy: dynamic public JSON snapshots use `no-store`; public media assets use one-day caching.
-- There are no websocket assumptions. The public surface is near-realtime through bounded polling plus Board cursor pagination.
+- There are no websocket assumptions. The public surface is near-realtime through bounded 60-second polling plus Board cursor pagination.
 
 ## Intelligence Coverage
 
