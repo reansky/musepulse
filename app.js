@@ -2207,7 +2207,7 @@ function wireEvents() {
     }
     if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
       event.preventDefault();
-        const provider = action.dataset.action === "oauth-google" ? "google" : "twitter";
+        const provider = action.dataset.action === "oauth-google" ? "google" : "x";
        setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
         if (!await oauthProviderEnabled(provider)) throw new Error(`${provider === "google" ? "Google" : "X"} sign-in needs its OAuth app credentials in Supabase.`);
