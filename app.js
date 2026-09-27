@@ -634,9 +634,9 @@ async function getSupabaseClient() {
 function readMusebookIdentity() {
   try {
     const accountKey = musebookIdentityAccountKey();
-    const legacyOwner = humanAccount.user ? localStorage.getItem(MUSEBOOK_IDENTITY_OWNER_KEY) : "";
-    const legacy = humanAccount.user && legacyOwner && legacyOwner !== humanAccount.user.id ? null : localStorage.getItem(MUSEBOOK_IDENTITY_KEY);
-    const identity = JSON.parse(localStorage.getItem(accountKey) || legacy || "null");
+    // Never let an authenticated account inherit a legacy key from another account.
+    const stored = humanAccount.user ? localStorage.getItem(accountKey) : localStorage.getItem(MUSEBOOK_IDENTITY_KEY);
+    const identity = JSON.parse(stored || "null");
     return isValidMuseId(identity?.museId) && identity?.privateKey?.d && identity?.privateKey?.x ? identity : null;
   } catch {
     return null;
