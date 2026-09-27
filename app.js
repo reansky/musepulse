@@ -66,6 +66,7 @@ const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
 const MUSEBOOK_ACCOUNT_IDENTITY_PREFIX = "musepulse:musebook-identity:account:";
 const MUSEBOOK_IDENTITY_OWNER_KEY = "musepulse:musebook-identity-owner:v1";
 const MUSEBOOK_IDENTITY_BACKUP_TYPE = "musepulse-musebook-identity";
+const MUSE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const PROFILE_FIELDS = "id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at";
 const PROFILE_MUSE_FIELDS = "musebook_muse_id,musebook_name,musebook_avatar_url,musebook_bio,musebook_visibility,musebook_public_key,musebook_created_at";
 let musebookIdentityMode = "create";
@@ -230,7 +231,16 @@ const ARTICLES = Object.freeze([
   }
 ]);
 
-function ensureHumanAuth() {
+function withTimeout(promise, milliseconds, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+function ensureHumanAuth(force = false) {
+  if (force) humanAuthPromise = null;
   if (!humanAuthPromise) humanAuthPromise = initHumanAuth();
   return humanAuthPromise;
 }
@@ -606,7 +616,7 @@ async function getSupabaseClient() {
   if (humanAccount.client) return humanAccount.client;
   if (!humanAccount.clientPromise) {
     humanAccount.clientPromise = (async () => {
-      const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
+       const response = await withTimeout(fetch("/api/config", { headers: { Accept: "application/json" } }), 10000, "Human account service timed out.");
       if (!response.ok) throw new Error("Human account service is not configured.");
        const config = await response.json();
        humanAccount.config = config;
@@ -627,10 +637,20 @@ function readMusebookIdentity() {
     const legacyOwner = humanAccount.user ? localStorage.getItem(MUSEBOOK_IDENTITY_OWNER_KEY) : "";
     const legacy = humanAccount.user && legacyOwner && legacyOwner !== humanAccount.user.id ? null : localStorage.getItem(MUSEBOOK_IDENTITY_KEY);
     const identity = JSON.parse(localStorage.getItem(accountKey) || legacy || "null");
-    return identity?.museId && identity?.privateKey?.d ? identity : null;
+    return isValidMuseId(identity?.museId) && identity?.privateKey?.d && identity?.privateKey?.x ? identity : null;
   } catch {
     return null;
   }
+}
+
+function isValidMuseId(value) {
+  return MUSE_ID_PATTERN.test(String(value || "").trim());
+}
+
+function requireMuseId(value) {
+  const museId = String(value || "").trim();
+  if (!isValidMuseId(museId)) throw new Error("Musebook returned an invalid Muse ID.");
+  return museId;
 }
 
 function writeMusebookIdentity(identity) {
@@ -684,7 +704,7 @@ async function importMusebookIdentity(event) {
   try {
     const payload = JSON.parse(await file.text());
     const candidate = payload?.type === MUSEBOOK_IDENTITY_BACKUP_TYPE ? payload.identity : payload;
-    if (!candidate?.museId || !/^[A-Za-z0-9_-]{1,128}$/.test(String(candidate.museId)) || !candidate?.privateKey?.d || !candidate?.privateKey?.x) {
+    if (!isValidMuseId(candidate?.museId) || !candidate?.privateKey?.d || !candidate?.privateKey?.x) {
       throw new Error("This file is not a valid Musebook identity backup.");
     }
     if (candidate.publicKey && candidate.publicKey !== candidate.privateKey.x) throw new Error("The backup public key does not match its private key.");
@@ -746,17 +766,18 @@ async function musebookWrite(path, payload) {
 }
 
 async function signMusebookRequest(endpoint, identity, fields) {
+  const museId = requireMuseId(identity?.museId);
   const privateKey = await crypto.subtle.importKey("jwk", identity.privateKey, { name: "Ed25519" }, false, ["sign"]);
   const timestamp = String(Date.now());
   const nonce = randomNonce();
   const skip = new Set(["signature", "timestamp", "nonce", "muse_id"]);
-  const lines = ["musebook-v1", endpoint, timestamp, nonce, identity.museId];
+  const lines = ["musebook-v1", endpoint, timestamp, nonce, museId];
   Object.keys(fields).filter((key) => !skip.has(key)).sort().forEach((key) => {
     const value = fields[key] == null ? "" : String(fields[key]);
     lines.push(`${key}:${utf8ByteLength(value)}:${value}`);
   });
   const signature = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, new TextEncoder().encode(lines.join("\n")));
-  return { muse_id: identity.museId, timestamp, nonce, signature: base64Url(new Uint8Array(signature)), ...fields };
+  return { muse_id: museId, timestamp, nonce, signature: base64Url(new Uint8Array(signature)), ...fields };
 }
 
 async function publishMusebookPost(identity, fields) {
@@ -1115,12 +1136,14 @@ function musebookIdentityForDisplay() {
 }
 
 async function linkMusebookIdentityToAccount(identity) {
-  if (!identity || !humanAccount.user || !humanAccount.client) return;
+  if (!identity) return;
+  const museId = requireMuseId(identity.museId);
+  if (!humanAccount.user || !humanAccount.client) return;
   const linked = linkedMusebookIdentity();
-  if (linked && linked.museId !== identity.museId) throw new Error(`This account already has Muse identity ${linked.museId}. Import that key instead.`);
+  if (linked && linked.museId !== museId) throw new Error(`This account already has Muse identity ${linked.museId}. Import that key instead.`);
   const payload = {
-    musebook_muse_id: identity.museId,
-    musebook_name: identity.name || identity.museId,
+    musebook_muse_id: museId,
+    musebook_name: identity.name || museId,
     musebook_avatar_url: identity.avatarUrl || null,
     musebook_bio: identity.bio || null,
     musebook_visibility: identity.visibility === "linked" ? "linked" : "anonymous",
@@ -1136,7 +1159,7 @@ async function linkMusebookIdentityToAccount(identity) {
       humanAccount.profile = data;
     }
   }
-  localStorage.setItem(`${MUSEBOOK_IDENTITY_OWNER_KEY}:${humanAccount.user.id}`, identity.museId);
+    localStorage.setItem(`${MUSEBOOK_IDENTITY_OWNER_KEY}:${humanAccount.user.id}`, museId);
 }
 
 async function loadHumanProfile() {
@@ -1191,16 +1214,18 @@ async function initHumanAuth() {
   try {
     const client = await getSupabaseClient();
     const callbackUrl = new URL(window.location.href);
+    const callbackError = callbackUrl.searchParams.get("error_description") || callbackUrl.searchParams.get("error");
+    if (callbackError) throw new Error(callbackError.replaceAll("+", " "));
     const code = callbackUrl.searchParams.get("code");
     if (code) {
-      const { error } = await client.auth.exchangeCodeForSession(code);
+      const { error } = await withTimeout(client.auth.exchangeCodeForSession(code), 10000, "The sign-in confirmation timed out.");
       if (error) throw error;
       callbackUrl.searchParams.delete("code");
       callbackUrl.searchParams.delete("state");
       window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
       document.querySelectorAll(".modal-backdrop").forEach((modal) => { modal.hidden = true; });
     }
-    const { data, error } = await client.auth.getSession();
+    const { data, error } = await withTimeout(client.auth.getSession(), 10000, "The sign-in session check timed out.");
     if (error) throw error;
     humanAccount.session = data.session;
     humanAccount.user = data.session?.user || null;
@@ -1269,7 +1294,7 @@ function openAuthModal(message = "") {
   $("#auth-modal").hidden = false;
   $("[data-action^='oauth-']")?.focus();
   setFormStatus("#auth-status", message);
-  ensureHumanAuth();
+  ensureHumanAuth(humanAccount.status === "error");
 }
 
 function authRedirectUrl() {
@@ -1421,7 +1446,15 @@ function renderCreateForm(type) {
     <p class="publish-note">Publishing uses your local Musebook signing key. It never sends that private key to MusePulse.</p>
     <div class="form-actions"><button class="button button-ghost" type="button" data-action="back-create">BACK</button><button class="button button-primary" type="submit">${definition.submitLabel}</button></div>
     <a id="create-result-link" class="text-link" hidden target="_blank" rel="noreferrer">Open published Musebook post</a>`;
-  setFormStatus("#create-status", !humanAccount.user ? "Sign in with Google or X before saving. A Musebook identity is required to publish." : readMusebookIdentity() ? `Musebook identity: ${readMusebookIdentity().name}` : "A Musebook identity is required to publish.");
+  const identity = readMusebookIdentity();
+  const linked = linkedMusebookIdentity();
+  setFormStatus("#create-status", !humanAccount.user
+    ? "Sign in with Google or X before saving. Publishing also requires a Musebook identity."
+    : identity
+      ? `Musebook identity: ${identity.name}`
+      : linked
+        ? `You can save this record now. Import the private key for ${linked.museId} to publish it to Musebook.`
+        : "You can save this record now. Create a Musebook identity only if you want to publish.");
 }
 
 async function createWorkspaceRecord(type, values) {
@@ -1503,12 +1536,15 @@ async function handleCreateSubmit(event) {
     return;
   }
   const publish = values.publish === "on";
-  const identity = readMusebookIdentity();
-  if (!identity) {
+  const identity = publish ? readMusebookIdentity() : null;
+  if (publish && !identity) {
     pendingCreateType = type;
     closeCreateMenu();
     openMusebookIdentityModalForMode("create");
-    setFormStatus("#musebook-identity-status", "Create your one Muse identity first. The Create form will open next.");
+    const linked = linkedMusebookIdentity();
+    setFormStatus("#musebook-identity-status", linked
+      ? `Import the private key for your linked Muse identity (${linked.museId}) to publish this submission.`
+      : "Create your one Muse identity first. The Create form will open next.");
     return;
   }
   const submit = form.querySelector('button[type="submit"]');
@@ -1516,7 +1552,7 @@ async function handleCreateSubmit(event) {
   setFormStatus("#create-status", values.logo_file?.size || values.image_file?.size ? "Uploading image and saving to your MusePulse workspace..." : "Saving to your MusePulse workspace...");
   let record = null;
   try {
-    await linkMusebookIdentityToAccount(identity);
+    if (identity) await linkMusebookIdentityToAccount(identity);
     record = await createWorkspaceRecord(type, values);
     state.accountData.userId = null;
     state.accountData.loadedAt = 0;
@@ -1616,8 +1652,7 @@ async function handleMusebookIdentitySubmit(event) {
       idempotency_key: crypto.randomUUID()
     });
     const muse = result?.muse || result;
-    const museId = muse?.muse_id || muse?.id;
-    if (!museId) throw new Error("Musebook did not return a Muse ID.");
+    const museId = requireMuseId(muse?.muse_id || muse?.id);
      const created = { museId, name: values.name.trim(), avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "", bio: values.bio.trim(), visibility: values.visibility || "anonymous", publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() };
      await linkMusebookIdentityToAccount(created);
      writeMusebookIdentity(created);
