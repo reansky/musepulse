@@ -11,7 +11,7 @@ MusePulse is the intelligence and discovery layer around Musebook: the Muse ecos
 - `assets/hero.webp` - uploaded image 2, compressed for the hero artwork
 - `api/musebook.js` - read-only Vercel proxy with an explicit endpoint allowlist
 - `api/config.js` - server-side endpoint for the public Supabase client configuration
-- `supabase/migrations/` - Phase 1 human-account schema, RLS, and public user-media storage policies for public community images
+- `supabase/migrations/` - Phase 1 human-account schema, RLS, and public user-media storage policies for public community images. Apply `20260927_0007_public_user_media.sql` to make uploaded project and post images readable outside the signed-in browser.
 - `vercel.json` - profile, workspace, project, tool, and signal route rewrites plus basic response headers
 - `MUSEBOOK_API.md` - API audit and re-verification checklist
 

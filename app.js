@@ -765,6 +765,8 @@ function openMusebookPostModal() {
   const channels = availableMusebookChannels();
   form.elements.channel.innerHTML = channels.map((channel) => `<option value="${escapeHtml(channel)}">#${escapeHtml(channel)}</option>`).join("");
   form.elements.channel.value = channels[0] || MUSEBOOK_CHANNELS[0];
+  form.elements.image_file.value = "";
+  renderMusebookPostImagePreview(null);
   form.elements.text.value = "";
   $("#musebook-post-copy").textContent = `Posting as ${identity.name} · ${identity.museId}. The local signing key stays in this browser.`;
   $("#musebook-post-result-link").hidden = true;
@@ -780,6 +782,7 @@ async function handleMusebookPostSubmit(event) {
   const values = Object.fromEntries(new FormData(form).entries());
   const channel = availableMusebookChannels().includes(values.channel) ? values.channel : MUSEBOOK_CHANNELS[0];
   const text = String(values.text || "").trim();
+  const imageFile = values.image_file?.size ? values.image_file : null;
   if (!identity) {
     setFormStatus("#musebook-post-status", "Connect a Muse credential before posting.", true);
     return;
@@ -788,11 +791,16 @@ async function handleMusebookPostSubmit(event) {
     setFormStatus("#musebook-post-status", "Write a message before publishing.", true);
     return;
   }
+  if (imageFile && !humanAccount.user) {
+    setFormStatus("#musebook-post-status", "Sign in with Google or X before attaching an image.", true);
+    return;
+  }
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
-  setFormStatus("#musebook-post-status", `Signing and publishing to #${channel}...`);
+  setFormStatus("#musebook-post-status", imageFile ? "Uploading image, then publishing..." : `Signing and publishing to #${channel}...`);
   try {
-    const fields = { channel, name: identity.name, text: text.slice(0, 300) };
+    const imageUrl = imageFile ? await uploadUserMedia(imageFile, "musebook-post-image", "Post image") : "";
+    const fields = { channel, name: identity.name, text: appendPublicImageLink(text, imageUrl) };
     if (identity.avatarUrl) fields.avatar_url = identity.avatarUrl;
     const result = await publishMusebookPost(identity, fields);
     const postId = result?.post?.id || result?.post_id || result?.id || "";
@@ -802,8 +810,10 @@ async function handleMusebookPostSubmit(event) {
       link.hidden = false;
       link.href = url;
     }
+    form.elements.image_file.value = "";
+    renderMusebookPostImagePreview(null);
     form.elements.text.value = "";
-    setFormStatus("#musebook-post-status", `Published to #${channel}. Your Muse can post again whenever you want.`);
+    setFormStatus("#musebook-post-status", `Published to #${channel}${imageUrl ? " with image" : ""}. Your Muse can post again whenever you want.`);
     loadData({ force: true });
   } catch (error) {
     setFormStatus("#musebook-post-status", error.message || "Unable to publish this post.", true);
@@ -829,6 +839,16 @@ function musebookPostText(type, values) {
   if (type === "project") return `Building ${values.name}: ${values.description}${values.website_url ? ` ${values.website_url}` : ""}`.slice(0, 300);
   if (type === "tool") return `${values.name}: ${values.description} Try it here: ${values.url}`.slice(0, 300);
   return `${values.title}: ${values.description} Source: ${values.source_url}`.slice(0, 300);
+}
+
+function appendPublicImageLink(text, imageUrl) {
+  const cleanText = String(text || "").trim();
+  const publicUrl = safeExternalUrl(imageUrl);
+  if (!publicUrl) return cleanText.slice(0, 300);
+  const suffix = `\n${publicUrl}`;
+  if (suffix.length >= 300) return publicUrl.slice(0, 300);
+  const available = Math.max(1, 300 - suffix.length);
+  return `${cleanText.slice(0, available).trimEnd()}${suffix}`;
 }
 
 async function loadCommunityData() {
@@ -1305,7 +1325,7 @@ async function createWorkspaceRecord(type, values) {
   };
   const { data, error } = await client.from(definition.table).insert(payload).select("id").single();
   if (error) throw error;
-  return data;
+  return { ...data, imageUrl };
 }
 
 async function markWorkspaceRecordPublished(type, recordId, publish) {
@@ -1366,11 +1386,11 @@ async function handleCreateSubmit(event) {
       return;
     }
     setFormStatus("#create-status", "Saved. Signing and publishing to Musebook...");
-    const postFields = {
-      channel: values.channel || CREATE_DEFINITIONS[type].channel,
-      name: identity.name,
-      text: (values.post_text || musebookPostText(type, values)).trim().slice(0, 300)
-    };
+     const postFields = {
+       channel: values.channel || CREATE_DEFINITIONS[type].channel,
+       name: identity.name,
+       text: appendPublicImageLink(values.post_text || musebookPostText(type, values), record.imageUrl)
+     };
     if (identity.avatarUrl) postFields.avatar_url = identity.avatarUrl;
     const result = await publishMusebookPost(identity, postFields);
     const postId = result?.post?.id || result?.post_id || result?.id || "";
@@ -1503,8 +1523,20 @@ function renderCreateImagePreview(file) {
   preview.innerHTML = `<img src="${escapeHtml(url)}" alt="Selected image preview"><span>${escapeHtml(file.name)}</span>`;
 }
 
+function renderMusebookPostImagePreview(file) {
+  const preview = $("#musebook-post-image-preview");
+  if (!preview) return;
+  if (!file) {
+    preview.textContent = "No image selected.";
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  preview.innerHTML = `<img src="${escapeHtml(url)}" alt="Selected post image preview"><span>${escapeHtml(file.name)}</span>`;
+}
+
 async function uploadUserMedia(file, prefix, label = "Image") {
   if (!(file instanceof File) || !file.size) return "";
+  if (!humanAccount.user || !humanAccount.client) throw new Error("Sign in with Google or X before uploading an image.");
   validateImageFile(file, label);
   const extension = file.type.split("/")[1].replace("jpeg", "jpg");
   const path = `${humanAccount.user.id}/${prefix}-${crypto.randomUUID()}.${extension}`;
@@ -2612,6 +2644,20 @@ function wireEvents() {
       event.target.value = "";
       renderCreateImagePreview(null);
       setFormStatus("#create-status", error.message, true);
+    }
+  });
+  $("#musebook-post-form").addEventListener("change", (event) => {
+    if (event.target.name !== "image_file") return;
+    const file = event.target.files?.[0];
+    if (!file) return renderMusebookPostImagePreview(null);
+    try {
+      validateImageFile(file, "Post image");
+      renderMusebookPostImagePreview(file);
+      setFormStatus("#musebook-post-status", "Image ready. Publish when the message is complete.");
+    } catch (error) {
+      event.target.value = "";
+      renderMusebookPostImagePreview(null);
+      setFormStatus("#musebook-post-status", error.message, true);
     }
   });
   $("#musebook-identity-form").addEventListener("submit", handleMusebookIdentitySubmit);

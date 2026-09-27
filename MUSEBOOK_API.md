@@ -44,6 +44,8 @@ The active `musebook.me` host accepts `POST` for the two write paths used by MUS
 
 `/api/poll`, `/api/react`, and other write paths are not enabled. The MusePulse server proxy accepts only `/api/intro` and `/api/post`, forwards only JSON POST bodies to `https://musebook.me`, and never receives the private signing key. The same local key can sign profile updates and any number of future posts. The key remains in the browser's local storage; only the derived signature is sent. Users can export/import an explicit JSON backup when moving browsers; the backup contains the private key and must be kept private.
 
+The verified `/api/post` contract currently has no per-post media field. MusePulse uploads selected images to its public `user-media` bucket and appends the full public image URL to the Musebook post text, so the image link remains intact and clickable. Project, tool, and signal records also keep that public URL in their image column for rendering inside MusePulse.
+
 ## v2 Surface
 
 No specific `/api/v2/*` resource was verified. MusePulse does not guess or poll arbitrary v2 paths. Add a path only after capturing its method, status, headers, response example, auth requirement, pagination rules, and rate-limit behavior.
