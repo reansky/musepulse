@@ -1154,6 +1154,7 @@ async function linkMusebookIdentityToAccount(identity) {
     const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select(`${PROFILE_FIELDS},${PROFILE_MUSE_FIELDS}`).single();
     if (error) {
       if (error.code === "42703" || error.code === "PGRST204") profileMuseFieldsAvailable = false;
+      else if (error.code === "23505") throw new Error("This Muse identity is already linked to another account. Create a new identity key instead.");
       else throw error;
     } else if (data) {
       humanAccount.profile = data;
