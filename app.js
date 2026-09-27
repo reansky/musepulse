@@ -1337,16 +1337,12 @@ function openCreateMenu(type = "") {
       form.hidden = true;
       setFormStatus("#create-status", "Sign in first. Every account needs one Muse identity before creating.", true);
       openAuthModal("Sign in with Google or X before creating a record.");
-    } else if (!readMusebookIdentity()) {
-      pendingCreateType = type;
-      closeCreateMenu();
-      openMusebookIdentityModalForMode("create");
-      setFormStatus("#musebook-identity-status", "Create your one Muse identity first. The Create form will open next.");
     } else {
-      linkMusebookIdentityToAccount(readMusebookIdentity()).then(() => renderCreateForm(type)).catch((error) => setFormStatus("#create-status", error.message, true));
+      const identity = readMusebookIdentity();
+      const ready = identity ? linkMusebookIdentityToAccount(identity) : Promise.resolve();
+      ready.then(() => renderCreateForm(type)).catch((error) => setFormStatus("#create-status", error.message, true));
     }
-  }
-  else {
+  } else {
     chooser.hidden = false;
     form.hidden = true;
     $("#create-title").textContent = "Make something useful.";
