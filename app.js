@@ -1174,6 +1174,14 @@ async function loadHumanProfile() {
       humanAccount.error = error.message || "X profile sync unavailable.";
     }
   }
+  const localIdentity = readMusebookIdentity();
+  if (localIdentity && profileMuseFieldsAvailable && !linkedMusebookIdentity()) {
+    try {
+      await linkMusebookIdentityToAccount(localIdentity);
+    } catch (error) {
+      humanAccount.error = error.message || "Muse identity link unavailable.";
+    }
+  }
   if (generation !== authGeneration || humanAccount.user?.id !== userId) return;
   renderAuthShell();
   renderWorkspace(true);
