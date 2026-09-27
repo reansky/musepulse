@@ -1540,9 +1540,20 @@ async function uploadUserMedia(file, prefix, label = "Image") {
   validateImageFile(file, label);
   const extension = file.type.split("/")[1].replace("jpeg", "jpg");
   const path = `${humanAccount.user.id}/${prefix}-${crypto.randomUUID()}.${extension}`;
-  const { error } = await humanAccount.client.storage.from("user-media").upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+  const storage = humanAccount.client.storage.from("user-media");
+  const { error } = await storage.upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
   if (error) throw error;
-  const { data } = humanAccount.client.storage.from("user-media").getPublicUrl(path);
+  const { data } = storage.getPublicUrl(path);
+  if (data?.publicUrl) {
+    try {
+      const probe = await fetch(data.publicUrl, { method: "HEAD", cache: "no-store" });
+      if (probe.ok) return data.publicUrl;
+    } catch {
+      // A private bucket can reject the public URL before the migration is applied.
+    }
+  }
+  const signed = await storage.createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
   if (!data?.publicUrl) throw new Error(`${label} URL could not be created.`);
   return data.publicUrl;
 }
