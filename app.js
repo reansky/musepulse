@@ -59,6 +59,7 @@ const humanAccount = {
   error: ""
 };
 const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2.57.4";
+const AUTH_TIMEOUT_MS = 10000;
 let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
@@ -616,12 +617,12 @@ async function getSupabaseClient() {
   if (humanAccount.client) return humanAccount.client;
   if (!humanAccount.clientPromise) {
     humanAccount.clientPromise = (async () => {
-       const response = await withTimeout(fetch("/api/config", { headers: { Accept: "application/json" } }), 10000, "Human account service timed out.");
-      if (!response.ok) throw new Error("Human account service is not configured.");
-       const config = await response.json();
-       humanAccount.config = config;
-       const { createClient } = await import(SUPABASE_MODULE_URL);
-       humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
+       const response = await withTimeout(fetch("/api/config", { headers: { Accept: "application/json" } }), AUTH_TIMEOUT_MS, "Human account service timed out.");
+       if (!response.ok) throw new Error("Human account service is not configured.");
+        const config = await withTimeout(response.json(), AUTH_TIMEOUT_MS, "Human account configuration timed out.");
+        humanAccount.config = config;
+        const { createClient } = await withTimeout(import(SUPABASE_MODULE_URL), AUTH_TIMEOUT_MS, "Human account library timed out.");
+        humanAccount.client = createClient(config.url, config.publishableKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" } });
       return humanAccount.client;
     })().catch((error) => {
       humanAccount.clientPromise = null;
@@ -1111,6 +1112,37 @@ function renderAuthShell() {
   renderAccountView();
 }
 
+function resetHumanAccountState() {
+  authGeneration += 1;
+  accountLoadId += 1;
+  humanAccount.session = null;
+  humanAccount.user = null;
+  humanAccount.profile = null;
+  humanAccount.isNewUser = false;
+  humanAccount.oauthProviders = null;
+  humanAccount.error = "";
+  humanAccount.status = "signed_out";
+  state.accountData = { projects: [], tools: [], signals: [], saved: [], userId: null, loadedAt: 0 };
+  state.accountLoading = false;
+  renderAuthShell();
+  renderWorkspace(true);
+}
+
+async function signOutHuman(openLogin = false) {
+  let error = null;
+  const existingClient = humanAccount.client;
+  resetHumanAccountState();
+  try {
+    const client = existingClient || await getSupabaseClient();
+    const result = await withTimeout(client.auth.signOut(), AUTH_TIMEOUT_MS, "Signing out timed out. You can still switch accounts.");
+    if (result?.error) error = result.error;
+  } catch (caught) {
+    error = caught;
+  }
+  if (openLogin) openAuthModal(error ? "Previous account cleared. Choose another account to continue." : "Choose an account to continue.");
+  if (error && !openLogin) setFormStatus("#auth-status", error.message || "Signing out failed.", true);
+}
+
 function musebookIdentityAccountKey() {
   return humanAccount.user?.id ? `${MUSEBOOK_ACCOUNT_IDENTITY_PREFIX}${humanAccount.user.id}` : MUSEBOOK_IDENTITY_KEY;
 }
@@ -1219,14 +1251,14 @@ async function initHumanAuth() {
     if (callbackError) throw new Error(callbackError.replaceAll("+", " "));
     const code = callbackUrl.searchParams.get("code");
     if (code) {
-      const { error } = await withTimeout(client.auth.exchangeCodeForSession(code), 10000, "The sign-in confirmation timed out.");
+      const { error } = await withTimeout(client.auth.exchangeCodeForSession(code), AUTH_TIMEOUT_MS, "The sign-in confirmation timed out.");
       if (error) throw error;
       callbackUrl.searchParams.delete("code");
       callbackUrl.searchParams.delete("state");
       window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
       document.querySelectorAll(".modal-backdrop").forEach((modal) => { modal.hidden = true; });
     }
-    const { data, error } = await withTimeout(client.auth.getSession(), 10000, "The sign-in session check timed out.");
+    const { data, error } = await withTimeout(client.auth.getSession(), AUTH_TIMEOUT_MS, "The sign-in session check timed out.");
     if (error) throw error;
     humanAccount.session = data.session;
     humanAccount.user = data.session?.user || null;
@@ -1310,7 +1342,7 @@ async function oauthProviderEnabled(provider) {
     return humanAccount.oauthProviders[provider];
   }
   const config = humanAccount.config || await getSupabaseClient().then(() => humanAccount.config);
-  const response = await fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}` } });
+   const response = await withTimeout(fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}` } }), AUTH_TIMEOUT_MS, "OAuth provider check timed out.");
   if (!response.ok) throw new Error("Unable to check OAuth provider availability.");
   const settings = await response.json();
   humanAccount.oauthProviders = settings.external || {};
@@ -2793,15 +2825,22 @@ function wireEvents() {
     if (action.dataset.action === "clear-musebook-identity") { event.preventDefault(); clearMusebookIdentity(); }
     if (action.dataset.action === "logout") {
       event.preventDefault();
-      getSupabaseClient().then((client) => client.auth.signOut()).catch((error) => setFormStatus("#auth-status", error.message, true));
+      $("#user-menu")?.setAttribute("hidden", "");
+      signOutHuman();
+    }
+    if (action.dataset.action === "switch-account") {
+      event.preventDefault();
+      $("#user-menu")?.setAttribute("hidden", "");
+      signOutHuman(true);
     }
     if (action.dataset.action === "oauth-google" || action.dataset.action === "oauth-x") {
       event.preventDefault();
-        const provider = action.dataset.action === "oauth-google" ? "google" : "x";
-       setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
+      const provider = action.dataset.action === "oauth-google" ? "google" : "x";
+      const queryParams = provider === "google" ? { prompt: "select_account" } : { force_login: "true" };
+      setFormStatus("#auth-status", `Connecting to ${provider === "google" ? "Google" : "X"}...`);
       getSupabaseClient().then(async (client) => {
         if (!await oauthProviderEnabled(provider)) throw new Error(`${provider === "google" ? "Google" : "X"} sign-in needs its OAuth app credentials in Supabase.`);
-        const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirectUrl() } });
+        const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirectUrl(), queryParams } });
         if (error) throw error;
       }).catch((error) => {
         const providerName = provider === "google" ? "Google" : "X";
