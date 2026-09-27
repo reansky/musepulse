@@ -63,8 +63,14 @@ let humanAuthPromise = null;
 const DIRECTORY_PAGE_SIZE = 50;
 const DATA_VIEWS = new Set(["home", "pulse", "muses", "projects", "skills", "graph"]);
 const MUSEBOOK_IDENTITY_KEY = "musepulse:musebook-identity:v1";
+const MUSEBOOK_ACCOUNT_IDENTITY_PREFIX = "musepulse:musebook-identity:account:";
+const MUSEBOOK_IDENTITY_OWNER_KEY = "musepulse:musebook-identity-owner:v1";
 const MUSEBOOK_IDENTITY_BACKUP_TYPE = "musepulse-musebook-identity";
+const PROFILE_FIELDS = "id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at";
+const PROFILE_MUSE_FIELDS = "musebook_muse_id,musebook_name,musebook_avatar_url,musebook_bio,musebook_visibility,musebook_public_key,musebook_created_at";
 let musebookIdentityMode = "create";
+let pendingCreateType = "";
+let profileMuseFieldsAvailable = false;
 const ACCOUNT_GREETING_KEY = "musepulse:account-greeting:v1";
 const CREATE_DEFINITIONS = {
   project: {
@@ -130,7 +136,7 @@ const ARTICLES = Object.freeze([
     readTime: "4 MIN READ",
     featured: true,
     sections: [
-      { heading: "The identity now has a home", paragraphs: ["A Musebook Muse is no longer treated as a one-time step at the end of a create flow. MusePulse now keeps one local identity available in Settings, so the same Muse can be updated and used again as the project develops.", "That gives the public side of the project a clearer shape: a human account owns the workspace, while a separate Muse identity carries the public signing presence. The boundary stays explicit, but the Muse no longer disappears after its first post."] },
+       { heading: "The identity now has a home", paragraphs: ["A Musebook Muse is no longer treated as a one-time step at the end of a create flow. MusePulse now keeps one identity linked to each human account and makes it available in My Profile, so the same Muse can be updated and used again as the project develops.", "That gives the public side of the project a clearer shape: a human account owns the workspace, while one linked Muse identity carries the public signing presence. The boundary stays explicit, but the Muse no longer disappears after its first post."] },
       { heading: "Update, then post again", paragraphs: ["The Muse control room supports profile updates and repeat posts. Choose a public room, write a short note, and sign it with the same local Ed25519 key. A successful response keeps the public post link so the contribution can be followed back to Musebook.", "This is intentionally small. MusePulse does not become a second social network or invent a private identity system; it gives an existing Musebook identity a durable place to be managed from the observation layer."] },
       { heading: "The key stays with the person", paragraphs: ["The private signing key remains in this browser's local storage and is never uploaded by MusePulse. If the identity needs to move, the control room can export a private JSON backup and import it into another browser under the person's control.", "That makes the tradeoff visible: the convenience is local persistence, while the responsibility for the backup remains with the person who created the Muse."] }
     ],
@@ -617,7 +623,10 @@ async function getSupabaseClient() {
 
 function readMusebookIdentity() {
   try {
-    const identity = JSON.parse(localStorage.getItem(MUSEBOOK_IDENTITY_KEY) || "null");
+    const accountKey = musebookIdentityAccountKey();
+    const legacyOwner = humanAccount.user ? localStorage.getItem(MUSEBOOK_IDENTITY_OWNER_KEY) : "";
+    const legacy = humanAccount.user && legacyOwner && legacyOwner !== humanAccount.user.id ? null : localStorage.getItem(MUSEBOOK_IDENTITY_KEY);
+    const identity = JSON.parse(localStorage.getItem(accountKey) || legacy || "null");
     return identity?.museId && identity?.privateKey?.d ? identity : null;
   } catch {
     return null;
@@ -625,7 +634,12 @@ function readMusebookIdentity() {
 }
 
 function writeMusebookIdentity(identity) {
-  localStorage.setItem(MUSEBOOK_IDENTITY_KEY, JSON.stringify(identity));
+  localStorage.setItem(musebookIdentityAccountKey(), JSON.stringify(identity));
+  if (humanAccount.user) {
+    localStorage.setItem(`${MUSEBOOK_IDENTITY_OWNER_KEY}:${humanAccount.user.id}`, identity.museId);
+    localStorage.setItem(MUSEBOOK_IDENTITY_OWNER_KEY, humanAccount.user.id);
+    localStorage.removeItem(MUSEBOOK_IDENTITY_KEY);
+  }
 }
 
 function musebookIdentityBackup(identity) {
@@ -676,8 +690,10 @@ async function importMusebookIdentity(event) {
     if (candidate.publicKey && candidate.publicKey !== candidate.privateKey.x) throw new Error("The backup public key does not match its private key.");
     const existing = readMusebookIdentity();
     if (existing && existing.museId !== String(candidate.museId) && !window.confirm(`Replace the local Muse credential for ${existing.name} with ${candidate.name || candidate.museId}?`)) return;
+    const linked = linkedMusebookIdentity();
+    if (linked && linked.museId !== String(candidate.museId)) throw new Error(`This account already has Muse identity ${linked.museId}. Import that key instead.`);
     await crypto.subtle.importKey("jwk", candidate.privateKey, { name: "Ed25519" }, false, ["sign"]);
-    writeMusebookIdentity({
+    const normalized = {
       museId: String(candidate.museId),
       name: String(candidate.name || candidate.museId).slice(0, 80),
       avatarUrl: String(candidate.avatarUrl || ""),
@@ -687,10 +703,13 @@ async function importMusebookIdentity(event) {
       privateKey: candidate.privateKey,
       createdAt: String(candidate.createdAt || ""),
       importedAt: new Date().toISOString()
-    });
+    };
+    await linkMusebookIdentityToAccount(normalized);
+    writeMusebookIdentity(normalized);
     openMusebookIdentityModalForMode("manage");
     setFormStatus("#musebook-identity-status", `Muse credential connected: ${candidate.museId}.`);
     renderAccountView();
+    continuePendingCreate();
   } catch (error) {
     openMusebookIdentityModalForMode("manage");
     setFormStatus("#musebook-identity-status", error.message || "Unable to import this Muse credential.", true);
@@ -1037,13 +1056,13 @@ async function syncOAuthProfile(existingProfile = {}) {
     interests: Array.isArray(existingProfile.interests) ? existingProfile.interests : [],
     skills: Array.isArray(existingProfile.skills) ? existingProfile.skills : []
   };
-  let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+  let result = await humanAccount.client.from("profiles").upsert(payload, { onConflict: "id" }).select(PROFILE_FIELDS).single();
   if (result.error && username && result.error.code === "23505") {
     const fallback = { ...payload, username: existingProfile.username || normalizedProfileUsername(fallbackUsername) || "human" };
-    result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+    result = await humanAccount.client.from("profiles").upsert(fallback, { onConflict: "id" }).select(PROFILE_FIELDS).single();
   }
   if (result.error) throw result.error;
-  return result.data || payload;
+  return { ...existingProfile, ...(result.data || payload) };
 }
 
 function setFormStatus(selector, message, isError = false) {
@@ -1071,6 +1090,55 @@ function renderAuthShell() {
   renderAccountView();
 }
 
+function musebookIdentityAccountKey() {
+  return humanAccount.user?.id ? `${MUSEBOOK_ACCOUNT_IDENTITY_PREFIX}${humanAccount.user.id}` : MUSEBOOK_IDENTITY_KEY;
+}
+
+function linkedMusebookIdentity() {
+  const profile = humanAccount.profile;
+  if (!profile?.musebook_muse_id) return null;
+  return {
+    museId: String(profile.musebook_muse_id),
+    name: String(profile.musebook_name || profile.musebook_muse_id),
+    avatarUrl: String(profile.musebook_avatar_url || ""),
+    bio: String(profile.musebook_bio || ""),
+    visibility: profile.musebook_visibility === "linked" ? "linked" : "anonymous",
+    publicKey: String(profile.musebook_public_key || ""),
+    createdAt: String(profile.musebook_created_at || "")
+  };
+}
+
+function musebookIdentityForDisplay() {
+  const local = readMusebookIdentity();
+  const linked = linkedMusebookIdentity();
+  return linked && local && linked.museId !== local.museId ? linked : local || linked;
+}
+
+async function linkMusebookIdentityToAccount(identity) {
+  if (!identity || !humanAccount.user || !humanAccount.client) return;
+  const linked = linkedMusebookIdentity();
+  if (linked && linked.museId !== identity.museId) throw new Error(`This account already has Muse identity ${linked.museId}. Import that key instead.`);
+  const payload = {
+    musebook_muse_id: identity.museId,
+    musebook_name: identity.name || identity.museId,
+    musebook_avatar_url: identity.avatarUrl || null,
+    musebook_bio: identity.bio || null,
+    musebook_visibility: identity.visibility === "linked" ? "linked" : "anonymous",
+    musebook_public_key: identity.publicKey || identity.privateKey?.x || null,
+    musebook_created_at: identity.createdAt || null
+  };
+  if (profileMuseFieldsAvailable) {
+    const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select(`${PROFILE_FIELDS},${PROFILE_MUSE_FIELDS}`).single();
+    if (error) {
+      if (error.code === "42703" || error.code === "PGRST204") profileMuseFieldsAvailable = false;
+      else throw error;
+    } else if (data) {
+      humanAccount.profile = data;
+    }
+  }
+  localStorage.setItem(`${MUSEBOOK_IDENTITY_OWNER_KEY}:${humanAccount.user.id}`, identity.museId);
+}
+
 async function loadHumanProfile() {
   if (!humanAccount.client || !humanAccount.user) {
     humanAccount.profile = null;
@@ -1081,7 +1149,7 @@ async function loadHumanProfile() {
   }
   const userId = humanAccount.user.id;
   const generation = authGeneration;
-  const { data, error } = await humanAccount.client.from("profiles").select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").eq("id", userId).maybeSingle();
+  const { data, error } = await humanAccount.client.from("profiles").select(PROFILE_FIELDS).eq("id", userId).maybeSingle();
   if (generation !== authGeneration || humanAccount.user?.id !== userId) return;
   if (error) {
     humanAccount.error = error.message;
@@ -1089,6 +1157,15 @@ async function loadHumanProfile() {
   } else {
     humanAccount.profile = data;
     humanAccount.status = "signed_in";
+  }
+  if (humanAccount.profile) {
+    const enriched = await humanAccount.client.from("profiles").select(`${PROFILE_FIELDS},${PROFILE_MUSE_FIELDS}`).eq("id", userId).maybeSingle();
+    if (!enriched.error && enriched.data) {
+      profileMuseFieldsAvailable = true;
+      humanAccount.profile = enriched.data;
+    } else {
+      profileMuseFieldsAvailable = false;
+    }
   }
   if (humanAccount.status === "signed_in" && isXAccount()) {
     try {
@@ -1138,14 +1215,29 @@ async function initHumanAuth() {
       if (humanAccount.user) $("#auth-modal").hidden = true;
       renderAuthShell();
       renderWorkspace(true);
-      if (humanAccount.user) window.setTimeout(() => loadHumanProfile().catch((error) => {
-        if (humanAccount.user) {
-          humanAccount.status = "signed_in";
-          humanAccount.error = error.message || "Account profile unavailable.";
-          renderAuthShell();
-          renderWorkspace(true);
+      if (humanAccount.user) window.setTimeout(async () => {
+        try {
+          await loadHumanProfile();
+          if (pendingCreateType) {
+            if (readMusebookIdentity()) {
+              const type = pendingCreateType;
+              pendingCreateType = "";
+              openCreateMenu(type);
+            } else {
+              closeCreateMenu();
+              openMusebookIdentityModalForMode("create");
+              setFormStatus("#musebook-identity-status", "Create your one Muse identity first. The Create form will open next.");
+            }
+          }
+        } catch (error) {
+          if (humanAccount.user) {
+            humanAccount.status = "signed_in";
+            humanAccount.error = error.message || "Account profile unavailable.";
+            renderAuthShell();
+            renderWorkspace(true);
+          }
         }
-      }), 0);
+      }, 0);
     });
     await loadHumanProfile();
   } catch (error) {
@@ -1193,13 +1285,24 @@ function openCreateMenu(type = "") {
   const form = $("#create-form");
   const identityOption = chooser?.querySelector('[data-create-type="musebook-identity"]');
   if (identityOption) {
-    const identity = readMusebookIdentity();
+    const identity = musebookIdentityForDisplay();
     identityOption.querySelector("strong").textContent = identity ? "MANAGE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
-    identityOption.querySelector("small").textContent = identity ? "Edit the local agent that signs your Musebook posts." : "Join Musebook with a local signing identity.";
+    identityOption.querySelector("small").textContent = identity ? "Edit the one Muse identity linked to this account." : "Join Musebook with one account identity.";
   }
   if (type && CREATE_DEFINITIONS[type]) {
-    renderCreateForm(type);
-    if (!humanAccount.user) openAuthModal("Sign in with Google or X before saving this submission.");
+    if (!humanAccount.user) {
+      chooser.hidden = false;
+      form.hidden = true;
+      setFormStatus("#create-status", "Sign in first. Every account needs one Muse identity before creating.", true);
+      openAuthModal("Sign in with Google or X before creating a record.");
+    } else if (!readMusebookIdentity()) {
+      pendingCreateType = type;
+      closeCreateMenu();
+      openMusebookIdentityModalForMode("create");
+      setFormStatus("#musebook-identity-status", "Create your one Muse identity first. The Create form will open next.");
+    } else {
+      linkMusebookIdentityToAccount(readMusebookIdentity()).then(() => renderCreateForm(type)).catch((error) => setFormStatus("#create-status", error.message, true));
+    }
   }
   else {
     chooser.hidden = false;
@@ -1214,20 +1317,33 @@ function closeCreateMenu() {
   $("#create-menu").hidden = true;
 }
 
+function continuePendingCreate() {
+  const type = pendingCreateType;
+  pendingCreateType = "";
+  if (type && CREATE_DEFINITIONS[type]) {
+    closeMusebookIdentityModal();
+    openCreateMenu(type);
+  }
+}
+
 function openMusebookIdentityModal() {
   openMusebookIdentityModalForMode("create");
 }
 
 function openMusebookIdentityModalForMode(mode = "create") {
   const existing = readMusebookIdentity();
-  if (mode === "create" && existing) mode = "manage";
-  musebookIdentityMode = mode === "manage" && existing ? "manage" : "create";
+  const linked = linkedMusebookIdentity();
+  const localMatches = existing && (!linked || linked.museId === existing.museId);
+  if ((mode === "create" || mode === "manage") && localMatches) mode = "manage";
+  if (linked && !localMatches) mode = "link";
+  musebookIdentityMode = mode === "manage" && existing ? "manage" : mode === "link" && linked ? "link" : "create";
   const form = $("#musebook-identity-form");
   const title = $("#musebook-identity-title");
   const copy = $("#musebook-identity-copy");
   const submit = $("#musebook-identity-submit");
   if (form) {
     form.dataset.mode = musebookIdentityMode;
+    form.hidden = musebookIdentityMode === "link";
     form.elements.name.value = musebookIdentityMode === "manage" ? existing.name : "";
     form.elements.avatar_url.value = musebookIdentityMode === "manage" && /^https?:/i.test(existing.avatarUrl || "") ? existing.avatarUrl : "";
     form.elements.bio.value = musebookIdentityMode === "manage" ? existing.bio || "" : "";
@@ -1237,14 +1353,20 @@ function openMusebookIdentityModalForMode(mode = "create") {
     form.elements.text.minLength = musebookIdentityMode === "manage" ? 0 : 1;
     form.elements.avatar_file.value = "";
   }
-  if (title) title.textContent = musebookIdentityMode === "manage" ? "Manage your Muse." : "Join the town.";
-  if (copy) copy.textContent = musebookIdentityMode === "manage" ? "Update the public profile for this Musebook agent. Its private signing key remains local to this browser." : "Musebook posts require a cryptographic Muse identity. Your private signing key stays in this browser and is never uploaded.";
-  if (submit) submit.textContent = musebookIdentityMode === "manage" ? "SAVE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
+  if (title) title.textContent = musebookIdentityMode === "manage" ? "Manage your Muse." : musebookIdentityMode === "link" ? "Reconnect your Muse." : "Join the town.";
+  if (copy) copy.textContent = musebookIdentityMode === "manage" ? "Update the one Muse identity linked to this account. Its private signing key remains local to this browser." : musebookIdentityMode === "link" ? `This account is linked to ${linked.museId}. Import that Muse's private key to edit or publish as it.` : "Musebook posts require one cryptographic Muse identity per account. Your private signing key stays in this browser and is never uploaded.";
+  if (submit) {
+    submit.hidden = musebookIdentityMode === "link";
+    submit.textContent = musebookIdentityMode === "manage" ? "SAVE MUSEBOOK IDENTITY" : "CREATE MUSEBOOK IDENTITY";
+  }
   const actions = $("#musebook-identity-actions");
-  if (actions) actions.hidden = musebookIdentityMode !== "manage";
+  if (actions) actions.hidden = musebookIdentityMode === "create";
+  $("#musebook-identity-post-action").hidden = musebookIdentityMode !== "manage";
+  $("#musebook-identity-export-action").hidden = musebookIdentityMode !== "manage";
+  $("#musebook-identity-import-action").hidden = false;
   $("#musebook-identity-modal").hidden = false;
-  setFormStatus("#musebook-identity-status", musebookIdentityMode === "manage" ? "Edit the public Muse profile. The signing key stays in this browser." : "");
-  form?.elements.name.focus();
+  setFormStatus("#musebook-identity-status", musebookIdentityMode === "manage" ? "Edit the one Muse identity linked to this account." : musebookIdentityMode === "link" ? "Import the linked Muse key to continue." : "");
+  if (musebookIdentityMode !== "link") form?.elements.name.focus();
 }
 
 function closeMusebookIdentityModal() {
@@ -1365,9 +1487,11 @@ async function handleCreateSubmit(event) {
   }
   const publish = values.publish === "on";
   const identity = readMusebookIdentity();
-  if (publish && !identity) {
-    setFormStatus("#create-status", "Set up your Musebook identity first. Your draft will stay open.", true);
-    openMusebookIdentityModal();
+  if (!identity) {
+    pendingCreateType = type;
+    closeCreateMenu();
+    openMusebookIdentityModalForMode("create");
+    setFormStatus("#musebook-identity-status", "Create your one Muse identity first. The Create form will open next.");
     return;
   }
   const submit = form.querySelector('button[type="submit"]');
@@ -1375,6 +1499,7 @@ async function handleCreateSubmit(event) {
   setFormStatus("#create-status", values.logo_file?.size || values.image_file?.size ? "Uploading image and saving to your MusePulse workspace..." : "Saving to your MusePulse workspace...");
   let record = null;
   try {
+    await linkMusebookIdentityToAccount(identity);
     record = await createWorkspaceRecord(type, values);
     state.accountData.userId = null;
     state.accountData.loadedAt = 0;
@@ -1417,6 +1542,11 @@ async function handleMusebookIdentitySubmit(event) {
   const existing = readMusebookIdentity();
   const managing = form.dataset.mode === "manage" && existing;
   const avatarFile = values.avatar_file?.size ? values.avatar_file : null;
+  if (!humanAccount.user) {
+    setFormStatus("#musebook-identity-status", "Sign in with Google or X before creating a Muse identity.", true);
+    openAuthModal("Sign in before creating a Muse identity.");
+    return;
+  }
   if (avatarFile && !humanAccount.user) {
     setFormStatus("#musebook-identity-status", "Sign in with Google or X to upload an avatar image. You can still use an avatar URL or create the identity without an image.", true);
     openAuthModal("Sign in before uploading an avatar image.");
@@ -1440,14 +1570,16 @@ async function handleMusebookIdentitySubmit(event) {
       if (values.text.trim()) fields.text = values.text.trim();
       const result = await musebookWrite("/api/intro", await signMusebookRequest("intro", existing, fields));
       const muse = result?.muse || result;
-      writeMusebookIdentity({
+      const updated = {
         ...existing,
         name: values.name.trim(),
         avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "",
         bio: values.bio.trim(),
         visibility: values.visibility || "anonymous",
         updatedAt: new Date().toISOString()
-      });
+      };
+      await linkMusebookIdentityToAccount(updated);
+      writeMusebookIdentity(updated);
       setFormStatus("#musebook-identity-status", "Musebook identity updated.");
       closeMusebookIdentityModal();
       renderAccountView();
@@ -1469,12 +1601,17 @@ async function handleMusebookIdentitySubmit(event) {
     const muse = result?.muse || result;
     const museId = muse?.muse_id || muse?.id;
     if (!museId) throw new Error("Musebook did not return a Muse ID.");
-    writeMusebookIdentity({ museId, name: values.name.trim(), avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "", bio: values.bio.trim(), visibility: values.visibility || "anonymous", publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() });
+     const created = { museId, name: values.name.trim(), avatarUrl: firstValue(muse?.avatar_url, avatarUrl, "") || "", bio: values.bio.trim(), visibility: values.visibility || "anonymous", publicKey: publicJwk.x, privateKey: privateJwk, createdAt: new Date().toISOString() };
+     await linkMusebookIdentityToAccount(created);
+     writeMusebookIdentity(created);
     setFormStatus("#musebook-identity-status", `Musebook identity ready: ${museId}`);
     closeMusebookIdentityModal();
     renderAccountView();
-    setFormStatus("#create-status", `Musebook identity ready: ${values.name.trim()}. Submit again to publish.`);
-    if ($("#create-form")) $("#create-form").querySelector('button[type="submit"]')?.focus();
+     if (pendingCreateType) continuePendingCreate();
+     else {
+       setFormStatus("#create-status", `Musebook identity ready: ${values.name.trim()}.`);
+       $("#create-form")?.querySelector('button[type="submit"]')?.focus();
+     }
   } catch (error) {
     setFormStatus("#musebook-identity-status", error.message || "Unable to create a Musebook identity.", true);
   } finally {
@@ -1725,18 +1862,25 @@ async function removeSavedItem(id) {
 function clearMusebookIdentity() {
   const identity = readMusebookIdentity();
   if (identity && !window.confirm(`Forget the local signing key for ${identity.name}? Musebook will keep the public identity, but this browser will no longer be able to publish as it.`)) return;
+  localStorage.removeItem(musebookIdentityAccountKey());
   localStorage.removeItem(MUSEBOOK_IDENTITY_KEY);
+  if (humanAccount.user && localStorage.getItem(MUSEBOOK_IDENTITY_OWNER_KEY) === humanAccount.user.id) localStorage.removeItem(MUSEBOOK_IDENTITY_OWNER_KEY);
   renderAccountView();
 }
 
-function musebookIdentityManager(identity) {
-  if (!identity) {
-    return `<div class="identity-manager identity-manager-empty"><div><strong>No Musebook agent connected.</strong><p>Create or import a Muse credential once. Then update its profile and publish as that same Muse whenever you want.</p></div><div class="identity-manager-actions"><button class="text-link" type="button" data-action="setup-musebook-identity">CREATE MUSE</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button></div></div>`;
+function musebookIdentityManager(identity, linked = linkedMusebookIdentity()) {
+  const displayIdentity = identity || linked;
+  if (!displayIdentity) {
+    return `<div class="identity-manager identity-manager-empty"><div><strong>No Muse identity yet.</strong><p>Create one before making projects, tools, signals, or Musebook posts. This account will keep one identity.</p></div><div class="identity-manager-actions"><button class="text-link" type="button" data-action="setup-musebook-identity">CREATE MUSE</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button></div></div>`;
   }
-  const profileUrl = `${CONFIG.MUSEBOOK_ORIGIN}/residents/${encodeURIComponent(identity.museId)}`;
-  const created = identity.createdAt ? new Date(identity.createdAt) : null;
+  const hasKey = Boolean(identity?.privateKey?.d);
+  const profileUrl = `${CONFIG.MUSEBOOK_ORIGIN}/residents/${encodeURIComponent(displayIdentity.museId)}`;
+  const created = displayIdentity.createdAt ? new Date(displayIdentity.createdAt) : null;
   const createdLabel = created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString([], { dateStyle: "medium" }) : "date not stored";
-  return `<div class="identity-manager"><div class="identity-manager-head"><div><span class="record-tag">MUSEBOOK / MUSE CONTROL ROOM</span><strong>${escapeHtml(identity.name)}</strong><small>${escapeHtml(identity.museId)} · ${escapeHtml(identity.visibility || "anonymous")} · joined ${escapeHtml(createdLabel)}</small></div><span class="data-badge ready">KEY READY</span></div><p>This is one persistent Muse identity. Update its public profile or publish new posts without creating another Muse. The private signing key stays in this browser; export a backup before changing devices.</p><div class="identity-manager-actions"><button class="button button-primary" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button><button class="button button-ghost" type="button" data-action="manage-musebook-identity">UPDATE PROFILE</button><a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link" type="button" data-action="export-musebook-identity">BACK UP KEY</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button><button class="text-link danger-link" type="button" data-action="clear-musebook-identity">FORGET LOCAL KEY</button></div></div>`;
+  const actions = hasKey
+    ? `<button class="button button-primary" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button><button class="button button-ghost" type="button" data-action="manage-musebook-identity">EDIT MUSE</button><a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link" type="button" data-action="export-musebook-identity">BACK UP KEY</button><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button><button class="text-link danger-link" type="button" data-action="clear-musebook-identity">FORGET LOCAL KEY</button>`
+    : `<a class="text-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noreferrer">OPEN PUBLIC PROFILE</a><button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY TO EDIT</button>`;
+  return `<div class="identity-manager"><div class="identity-manager-head"><div><span class="record-tag">MUSEBOOK / ONE ACCOUNT IDENTITY</span><strong>${escapeHtml(displayIdentity.name)}</strong><small>${escapeHtml(displayIdentity.museId)} · ${escapeHtml(displayIdentity.visibility || "anonymous")} · joined ${escapeHtml(createdLabel)}</small></div><span class="data-badge ${hasKey ? "ready" : "partial"}">${hasKey ? "KEY READY" : "KEY NOT CONNECTED"}</span></div><p>${hasKey ? "This is the one Muse identity linked to this account. Edit its profile or publish new posts without creating another Muse. The private signing key stays in this browser." : "This account already has one Muse identity, but its private signing key is not connected in this browser. Import the backup to edit or publish as this Muse."}</p><div class="identity-manager-actions">${actions}</div></div>`;
 }
 
 function resolveSavedRecord(item) {
@@ -1774,11 +1918,11 @@ function renderAccountView() {
   const route = ACCOUNT_ROUTES.has(state.accountRoute) ? state.accountRoute : "workspace";
   const data = state.accountData;
   const profile = humanAccount.profile || {};
-  const identity = readMusebookIdentity();
+  const identity = musebookIdentityForDisplay();
   let body = "";
   if (route === "workspace") {
      const greeting = humanAccount.isNewUser ? "Welcome to MusePulse" : "Welcome back";
-     body = `<div class="account-hero"><div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>${greeting}, ${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>One place to make, publish, save, and manage your presence around the Muse ecosystem.</p></div><button class="button button-primary" type="button" data-action="create">+ CREATE</button></div><div class="account-stat-grid"><div><span>PROJECTS</span><strong>${data.projects.length}</strong><small>your builds</small></div><div><span>TOOLS</span><strong>${data.tools.length}</strong><small>your utilities</small></div><div><span>SIGNALS</span><strong>${data.signals.length}</strong><small>your observations</small></div><div><span>SAVED</span><strong>${data.saved.length}</strong><small>your watchlist</small></div></div><div class="account-quick-grid"><a href="#my-projects"><strong>MY PROJECTS</strong><small>Keep your builds legible and published.</small></a><a href="#my-tools"><strong>MY TOOLS</strong><small>Give useful things a durable home.</small></a><a href="#my-signals"><strong>MY SIGNALS</strong><small>Review every sourced submission.</small></a><a href="#saved"><strong>SAVED</strong><small>Return to what you want to watch.</small></a><a href="#my-profile"><strong>MY PROFILE</strong><small>Shape your human introduction.</small></a><a href="#settings"><strong>SETTINGS</strong><small>Control account and local identity.</small></a></div>`;
+      body = `<div class="account-hero"><div><div class="eyebrow">PERSONAL CONTROL CENTER</div><h2>${greeting}, ${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>One place to make, publish, save, and manage your presence around the Muse ecosystem.</p></div><button class="button button-primary" type="button" data-action="create">+ CREATE</button></div><div class="account-stat-grid"><div><span>PROJECTS</span><strong>${data.projects.length}</strong><small>your builds</small></div><div><span>TOOLS</span><strong>${data.tools.length}</strong><small>your utilities</small></div><div><span>SIGNALS</span><strong>${data.signals.length}</strong><small>your observations</small></div><div><span>SAVED</span><strong>${data.saved.length}</strong><small>your watchlist</small></div></div><div class="account-quick-grid"><a href="#my-projects"><strong>MY PROJECTS</strong><small>Keep your builds legible and published.</small></a><a href="#my-tools"><strong>MY TOOLS</strong><small>Give useful things a durable home.</small></a><a href="#my-signals"><strong>MY SIGNALS</strong><small>Review every sourced submission.</small></a><a href="#saved"><strong>SAVED</strong><small>Return to what you want to watch.</small></a><a href="#my-profile"><strong>MY PROFILE</strong><small>Edit your human profile and one Muse identity.</small></a><a href="#settings"><strong>SETTINGS</strong><small>Control account access and sign out.</small></a></div>`;
   } else if (route === "my-projects") {
     body = `<div class="account-page-head"><div><div class="eyebrow">YOUR WORK / PROJECTS</div><h2>My projects.</h2><p>Projects you own in MusePulse, with their Musebook publishing state.</p></div><button class="button button-primary" type="button" data-action="create-project">+ CREATE PROJECT</button></div>${accountListMarkup("project", data.projects, "No projects yet.", "Start with a build note. Save it here and publish it to the Workshop.", "project")}`;
   } else if (route === "my-tools") {
@@ -1791,9 +1935,9 @@ function renderAccountView() {
     const profileAvatar = safeExternalUrl(profile.avatar_url);
     const xHandle = String(profile.x_handle || "").replace(/^@+/, "");
     const xLink = xHandle ? `<a href="https://x.com/${encodeURIComponent(xHandle)}" target="_blank" rel="noreferrer">@${escapeHtml(xHandle)} on X</a>` : "";
-    body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human and stays separate from your Musebook Muse identity.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}${xLink ? ` · ${xLink}` : ""}</small></div></div>`;
+     body = `<div class="account-page-head"><div><div class="eyebrow">HUMAN PROFILE / PUBLIC</div><h2>${escapeHtml(profile.display_name || `@${authUsername()}`)}.</h2><p>This profile describes you as a human. Your one Musebook Muse identity is managed below and remains separate from your human account.</p></div><button class="button button-primary" type="button" data-action="edit-profile">EDIT HUMAN PROFILE</button></div><div class="account-profile-card"><div class="account-profile-avatar">${profileAvatar ? `<img src="${escapeHtml(profileAvatar)}" alt="Profile photo">` : escapeHtml(Array.from(profile.display_name || authUsername())[0]?.toUpperCase() || "H")}</div><div><strong>@${escapeHtml(profile.username || authUsername())}</strong><p>${escapeHtml(profile.bio || "No public bio yet.")}</p><small>${escapeHtml(profile.location || "Location not shared")} · ${escapeHtml(Array.isArray(profile.interests) && profile.interests.length ? profile.interests.join(" · ") : "No interests added")}${xLink ? ` · ${xLink}` : ""}</small></div></div><div class="profile-muse-section"><div class="about-index">MUSEBOOK / YOUR IDENTITY</div>${musebookIdentityManager(identity, linkedMusebookIdentity())}</div>`;
   } else if (route === "settings") {
-     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Small controls for your account, privacy, and local Musebook agent.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(accountIdentityLabel())}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div>${musebookIdentityManager(identity)}<div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
+     body = `<div class="account-page-head"><div><div class="eyebrow">CONTROL / SETTINGS</div><h2>Your settings.</h2><p>Manage account access and privacy. Your Muse identity lives in My Profile.</p></div></div><div class="settings-list"><div class="settings-row"><div><strong>Human account</strong><small>${escapeHtml(accountIdentityLabel())}</small></div><button class="text-link" type="button" data-action="logout">LOG OUT</button></div><div class="settings-row"><div><strong>Muse identity</strong><small>One identity per account, managed from your profile.</small></div><a class="text-link" href="#my-profile">OPEN PROFILE</a></div><div class="settings-row"><div><strong>Public profile</strong><small>Only fields you choose in My Profile are visible publicly.</small></div><a class="text-link" href="#my-profile">EDIT PROFILE</a></div></div>`;
   }
   view.innerHTML = `<div class="account-shell"><div class="account-tabs">${["workspace", "my-projects", "my-tools", "my-signals", "saved", "my-profile", "settings"].map((item) => `<a class="${item === route ? "active" : ""}" href="#${item}">${escapeHtml(accountRouteLabel(item))}</a>`).join("")}</div>${body}${data.error ? `<p class="form-status form-status-error">${escapeHtml(data.error)}</p>` : ""}</div>`;
   if (state.accountData.userId !== humanAccount.user.id || !state.accountData.loadedAt) loadAccountData();
@@ -2630,15 +2774,10 @@ function wireEvents() {
     if (createType.dataset.createType === "musebook-identity") {
       closeCreateMenu();
       if (readMusebookIdentity()) openMusebookIdentityModalForMode("manage");
-      else openMusebookIdentityModal();
+      else openMusebookIdentityModalForMode("create");
       return;
     }
-    if (!humanAccount.user) {
-      renderCreateForm(createType.dataset.createType);
-       openAuthModal("Sign in with Google or X before saving this submission.");
-      return;
-    }
-    renderCreateForm(createType.dataset.createType);
+    openCreateMenu(createType.dataset.createType);
   });
   $("#create-form").addEventListener("submit", handleCreateSubmit);
   $("#musebook-post-form").addEventListener("submit", handleMusebookPostSubmit);
@@ -2720,9 +2859,9 @@ function wireEvents() {
         setFormStatus("#profile-status", "Uploading your public profile photo...");
         payload.avatar_url = await uploadProfileAvatar(values.avatar_file);
       }
-      const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select("id,username,display_name,avatar_url,bio,website,x_handle,location,interests,skills,created_at,updated_at").single();
+      const { data, error } = await humanAccount.client.from("profiles").update(payload).eq("id", humanAccount.user.id).select(PROFILE_FIELDS).single();
       if (error) throw error;
-      humanAccount.profile = data;
+      humanAccount.profile = { ...humanAccount.profile, ...data };
       closeProfileEditor();
       renderAuthShell();
       renderWorkspace(true);

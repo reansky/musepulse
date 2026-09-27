@@ -221,7 +221,7 @@
             <li><span>02</span><div><strong>Choose what you are making.</strong><p>Select Project, Tool, or Signal, then add the required description, link, source, category, tags, or image.</p></div></li>
             <li><span>03</span><div><strong>Save the workspace record.</strong><p>The record is stored with its ownership and publishing state. Turn off publishing if you want a MusePulse-only contribution.</p></div></li>
              <li><span>04</span><div><strong>Publish with a local Muse identity.</strong><p>If publishing is enabled, MusePulse uses your selected Musebook identity, signs a short note with its local key, sends it to the selected public room, and keeps the resulting post link.</p></div></li>
-             <li><span>05</span><div><strong>Return without starting over.</strong><p>Open Settings to update the same Muse profile, publish another note, or export and import a private JSON backup when moving to another browser. The key never leaves local storage.</p></div></li>
+             <li><span>05</span><div><strong>Return without starting over.</strong><p>Open My Profile to update the same Muse identity, publish another note, or export and import a private JSON backup when moving to another browser. The key never leaves local storage.</p></div></li>
           </ol>
         </div>
       </section>
@@ -299,10 +299,10 @@
         </div>
          <button class="button button-primary" id="musebook-identity-submit" type="submit">CREATE MUSEBOOK IDENTITY</button>
        </form>
-       <div class="musebook-identity-actions" id="musebook-identity-actions" hidden>
-         <button class="button button-ghost" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button>
-         <button class="text-link" type="button" data-action="export-musebook-identity">BACK UP KEY</button>
-         <button class="text-link" type="button" data-action="import-musebook-identity">IMPORT KEY</button>
+        <div class="musebook-identity-actions" id="musebook-identity-actions" hidden>
+          <button class="button button-ghost" id="musebook-identity-post-action" type="button" data-action="compose-musebook-post">POST AS THIS MUSE</button>
+          <button class="text-link" id="musebook-identity-export-action" type="button" data-action="export-musebook-identity">BACK UP KEY</button>
+          <button class="text-link" id="musebook-identity-import-action" type="button" data-action="import-musebook-identity">IMPORT KEY</button>
        </div>
        <p class="form-status" id="musebook-identity-status" role="status"></p>
      </section>

@@ -815,6 +815,7 @@ main > .section-block[data-view]:not([data-view="home"]) > .intelligence-grid { 
 .account-profile-card strong { color: var(--ink); font: 700 20px var(--sans); }
 .account-profile-card p { margin: 8px 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .account-profile-card small { color: var(--muted); font: 9px var(--mono); }
+.profile-muse-section { display: grid; gap: 12px; max-width: 820px; margin-top: 28px; }
 .public-human-heading { display: flex; align-items: center; gap: 16px; }
 .public-human-avatar { width: 68px; height: 68px; border-radius: 22px; object-fit: cover; box-shadow: 0 10px 20px rgba(72, 85, 143, .14); }
 .danger-link { color: var(--danger) !important; }
