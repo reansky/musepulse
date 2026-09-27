@@ -1247,7 +1247,16 @@ async function initHumanAuth() {
         }
       }, 0);
     });
-    await loadHumanProfile();
+    renderAuthShell();
+    renderWorkspace(true);
+    if (humanAccount.user) window.setTimeout(() => loadHumanProfile().catch((error) => {
+      if (humanAccount.user) {
+        humanAccount.status = "signed_in";
+        humanAccount.error = error.message || "Account profile unavailable.";
+        renderAuthShell();
+        renderWorkspace(true);
+      }
+    }), 0);
   } catch (error) {
     humanAccount.status = "error";
     humanAccount.error = error.message || "Account service unavailable.";
